@@ -61,35 +61,54 @@ nids = length(ids)
 
 output = array(NA, c(nlon,nlat,nids))
 
+mx = which.min(abs(lon - 180))
 for (i in 1:nids) {
-
+  
   points  = which(input == ids[i])
   indices = arrayInd(points, c(nlon,nlat))
-
+  
+  yjm1 = -180
   for (j in 1:length(points)) {
+    
     x = indices[j,1]
     y = indices[j,2]
-
-    y1 = min(y + dny,nlat)
-    y0 = max(y - dny, 1)
-
-    dx  = (lon[2] - lon[1])*min(cos(pi*lat[y1]/180),cos(pi*lat[y0]/180))*dd
-    dnx = floor(threshold/dx)
-
-    x1 = min(x + dnx,nlon)
-    x0 = max(x - dnx,1)
-
-    grid = as.matrix(expand.grid(x0:x1,y0:y1))
-    dists = distances(c(lon[x],lat[y]), cbind(lon[grid[,1]],lat[grid[,2]]))
-
-    stencil = grid[dists <= threshold,]
-    # stencil[,1] = stencil[,1] - x
-    # stencil[,2] = stencil[,2] - y
-
-    output[cbind(stencil,i)] = ids[i]
-
+    
+    if (y != yjm1) {
+      
+      y1 = min(y + dny,nlat)
+      y0 = max(y - dny, 1)
+      
+      dx  = (lon[2] - lon[1])*min(cos(pi*lat[y1]/180),cos(pi*lat[y0]/180))*dd
+      dnx = floor(threshold/dx)
+      
+      x1 = min(mx + dnx,nlon)
+      x0 = max(mx - dnx,1)
+      
+      grid = as.matrix(expand.grid(x0:x1,y0:y1))
+      dists = distances(c(180,lat[y]), cbind(lon[grid[,1]],lat[grid[,2]]))
+      
+      stencil = grid[dists <= threshold,]
+      stencil[,1] = stencil[,1] - mx
+      stencil[,2] = stencil[,2] - y
+      
+    }
+    
+    stencilj = stencil
+    stencilj[,1] = stencil[,1] + x
+    stencilj[,2] = stencil[,2] + y
+    stencilj = stencilj[1 <= stencilj[,1] & stencilj[,1] <= nlon &
+                          1 <= stencilj[,2] & stencilj[,2] <= nlat,]
+    output[cbind(stencilj,i)] = ids[i]
+    
+    yjm1 = y
+    
+    # print(j)
+    # plot(stencil)
+    # image(output[,,i])
+    # j = j  + 1
+    
   } ## j
-
+  
 } ## i
 
 check = apply(output, c(1,2), function(x) sum(!is.na(x)))
