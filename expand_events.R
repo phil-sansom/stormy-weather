@@ -69,7 +69,7 @@ for (i in 1:nids) {
   
   yjm1 = -180
   for (j in 1:length(points)) {
-    
+
     x = indices[j,1]
     y = indices[j,2]
     
@@ -96,8 +96,8 @@ for (i in 1:nids) {
     stencilj = stencil
     stencilj[,1] = stencil[,1] + x
     stencilj[,2] = stencil[,2] + y
-    stencilj = stencilj[1 <= stencilj[,1] & stencilj[,1] <= nlon &
-                          1 <= stencilj[,2] & stencilj[,2] <= nlat,]
+    stencilj = stencilj[1 <= stencilj[,2] & stencilj[,2] <= nlat,]
+    stencilj[,1] = (stencilj[,1] -1) %% nlon + 1
     output[cbind(stencilj,i)] = ids[i]
     
     yjm1 = y
