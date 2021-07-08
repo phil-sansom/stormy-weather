@@ -69,6 +69,7 @@ for (i in 1:nids) {
   output[,,i] = buffer*ids[i]
   
   indices = trace.contour(buffer)
+  indices[,1] = (indices[,1] - 1) %% nlon + 1
 
   image(1:nlon, 1:nlat, buffer)
   points(indices)
@@ -112,7 +113,7 @@ for (i in 1:nids) {
   
 } ## i
 
-check = apply(output, c(1,2), function(x) sum(!is.na(x)))
+check = apply(output, c(1,2), function(x) sum(x != 0))
 
 image(lon, lat, check)
 contour(lon, lat, input, add = TRUE, levels = 1:max(ids))

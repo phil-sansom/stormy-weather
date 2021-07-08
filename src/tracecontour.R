@@ -25,9 +25,16 @@ trace.contour = function(x) {
   
   nx = nrow(x)
   ny = ncol(x)
+  i0 = 0
+  total = 1
+  while(total > 0 & i0 <= nx) {
+    i0 = i0 + 1
+    total = sum(x[i0,])
+  }
+  i0 = (i0 - 1) %% nx + 1
   c = c(1,1)
   skip = FALSE
-  for (i in 1:nx) {
+  for (i in i0:nx) {
     for (j in 1:ny) {
       if (buffer[i,j] == 1) {
         s = c(i,j)
