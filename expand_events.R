@@ -10,6 +10,7 @@ source("src/distances.R")
 source("src/image.R")
 source("src/invertlat.R")
 source("src/lonflip.R")
+source("src/tracecontour.R")
 
 
 filename = "../cyclone_id/tests/output/cyclones_20000102T00.nc"
@@ -64,11 +65,16 @@ output = array(NA, c(nlon,nlat,nids))
 mx = which.min(abs(lon - 180))
 for (i in 1:nids) {
   
-  points  = which(input == ids[i])
-  indices = arrayInd(points, c(nlon,nlat))
+  buffer = 1*(input == ids[i])
+  output[,,i] = buffer*ids[i]
+  
+  indices = trace.contour(buffer)
+
+  image(1:nlon, 1:nlat, buffer)
+  points(indices)
   
   yjm1 = -180
-  for (j in 1:length(points)) {
+  for (j in 1:nrow(indices)) {
 
     x = indices[j,1]
     y = indices[j,2]
@@ -101,12 +107,7 @@ for (i in 1:nids) {
     output[cbind(stencilj,i)] = ids[i]
     
     yjm1 = y
-    
-    # print(j)
-    # plot(stencil)
-    # image(output[,,i])
-    # j = j  + 1
-    
+
   } ## j
   
 } ## i

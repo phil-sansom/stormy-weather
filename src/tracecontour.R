@@ -65,4 +65,6 @@ trace.contour = function(x) {
     cy = c[2]
   } ## c != s
   
+  return(t(B))
+  
 }
