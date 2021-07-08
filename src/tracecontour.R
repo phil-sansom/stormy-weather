@@ -1,4 +1,4 @@
-move.clockwise = function(x, x0, nlon) {
+move.clockwise = function(x, x0) {
   xmx0 = x - x0
   if (xmx0[1] == 0 & xmx0[2] == -1) {
     z = x0 + c(-1,-1)
@@ -17,7 +17,7 @@ move.clockwise = function(x, x0, nlon) {
   } else if (xmx0[1] ==  1 & xmx0[2] == -1) {
     z = x0 + c(0,-1)
   }
-  # z[1] = (z[1] - 1) %% nlon  + 1
+  # z[1] = (z[1] - 1) %% nx  + 1
   z
 }
 
@@ -27,24 +27,24 @@ trace.contour = function(x) {
   ny = ncol(x)
   c = c(1,1)
   skip = FALSE
-  for (ii in 1:nx) {
-    for (jj in 1:ny) {
-      if (buffer[ii,jj] == 1) {
-        s = c(ii,jj)
+  for (i in 1:nx) {
+    for (j in 1:ny) {
+      if (buffer[i,j] == 1) {
+        s = c(i,j)
         skip = TRUE
         break
       } else {
-        c = c(ii,jj)
+        c = c(i,j)
       }
-    } ## jj
+    } ## j
     if (skip)
       break
-  } ## ii
+  } ## i
   p = s
   B = p
   c0 = c
   cm1 = c
-  c = move.clockwise(c, p, nx)
+  c = move.clockwise(c, p)
   cm1x = (cm1[1] - 1) %% nx + 1
   cm1y = cm1[2]
   cx = (c[1] - 1) %% nx + 1
@@ -54,16 +54,15 @@ trace.contour = function(x) {
       B = cbind(B,c)
       p = c
       c = cm1
-      c = move.clockwise(c, p, nx)
+      c = move.clockwise(c, p)
     } else {
       cm1 = c
       cm1x = (cm1[1] - 1) %% nx + 1
       cm1y = cm1[2]
-      c = move.clockwise(c, p, nx)
+      c = move.clockwise(c, p)
     }
     cx = (c[1] - 1) %% nx + 1
     cy = c[2]
   } ## c != s
-  B
   
 }
