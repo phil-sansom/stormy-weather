@@ -53,9 +53,6 @@ dy = (lat[2] - lat[1])*dd
 
 dny = floor(threshold/dy)
 
-#input[input == 0] = NA
-image(lon,lat,input, asp = 1)
-
 ids = sort(unique(as.numeric(input)))
 ids = ids[ids > 0 & !is.na(ids)]
 nids = length(ids)
@@ -71,9 +68,6 @@ for (i in 1:nids) {
   indices = trace.contour(buffer)
   indices[,1] = (indices[,1] - 1) %% nlon + 1
 
-  image(1:nlon, 1:nlat, buffer)
-  points(indices)
-  
   yjm1 = -180
   for (j in 1:nrow(indices)) {
 
@@ -117,25 +111,3 @@ check = apply(output, c(1,2), function(x) sum(x != 0))
 
 image(lon, lat, check)
 contour(lon, lat, input, add = TRUE, levels = 1:max(ids))
-
-
-
-# ## Bounding box in grid coordinates  
-# minx = min(indices[,1])
-# maxx = max(indices[,1])
-# miny = min(indices[,2])
-# maxy = max(indices[,2])
-# 
-# rect(lon[minx], lat[miny], lon[maxx], lat[maxy], lwd = 2)
-# 
-# ## Expand bounding box
-# maxy1 = min(maxy + dny,nlat)
-# miny1 = max(miny - dny, 1)
-# 
-# dx  = (lon[2] - lon[1])*min(cos(pi*lat[maxy1]/180),cos(pi*lat[miny1]/180))*dd
-# dnx = floor(threshold/dx)
-# 
-# maxx1 = min(maxx + dnx,nlon)
-# minx1 = max(minx - dnx,1)
-# 
-# rect(lon[minx1], lat[miny1], lon[maxx1], lat[maxy1], lwd = 2, border = "red")
