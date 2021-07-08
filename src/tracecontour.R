@@ -23,12 +23,14 @@ move.clockwise = function(x, x0) {
 
 trace.contour = function(x) {
   
-  ## Expand by one latitude to allow for objects on the bottom row
-  x = cbind(0,x)
-  
   ## Extract dimensions
   nx = nrow(x)
   ny = ncol(x)
+  
+  ## Expand domain to allow for objects on top and bottom rows
+  xx = matrix(0, nx, ny + 2)
+  xx[,2:(ny + 1)] = x
+  ny = ny + 2
   
   ## Find first meridian with no points in it
   ## Need to start from leftmost point in object, this avoids finding the
