@@ -23,6 +23,7 @@ move.clockwise = function(x, x0) {
 
 trace.contour = function(x) {
   
+  x = cbind(0,x)
   nx = nrow(x)
   ny = ncol(x)
   i0 = 0
@@ -36,7 +37,7 @@ trace.contour = function(x) {
   skip = FALSE
   for (i in i0:nx) {
     for (j in 1:ny) {
-      if (buffer[i,j] == 1) {
+      if (x[i,j] == 1) {
         s = c(i,j)
         skip = TRUE
         break
@@ -57,7 +58,7 @@ trace.contour = function(x) {
   cx = (c[1] - 1) %% nx + 1
   cy = c[2]
   while(cx != s[1] | cy != s[2] | cm1x != c0[1] | cm1y != c0[2]) {
-    if (buffer[cx,cy] == 1) {
+    if (x[cx,cy] == 1) {
       B = cbind(B,c)
       p = c
       c = cm1
@@ -72,6 +73,7 @@ trace.contour = function(x) {
     cy = c[2]
   } ## c != s
   
-  return(t(B))
+  B[2,] = B[2,] - 1
+  t(B)
   
 }
