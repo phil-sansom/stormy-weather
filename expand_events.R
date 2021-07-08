@@ -42,72 +42,83 @@ if (length(facets) == 3) {
 }
 t0 = format(t0, "%Y%m%dT%H%M%S")
 dates = extract.dates(t0, times, calendar, units)
-tt = length(times)
-
-t = 1
-
-input = ncvar_get(nci, varid, c(1,1,t), c(-1,-1,1))
+nt = length(times)
 
 dd = distance(c(0,0), c(0,1))
 dy = (lat[2] - lat[1])*dd
 
 dny = floor(threshold/dy)
-
-ids = sort(unique(as.numeric(input)))
-ids = ids[ids > 0 & !is.na(ids)]
-nids = length(ids)
-
-output = array(NA, c(nlon,nlat,nids))
-
 mx = which.min(abs(lon - 180))
-for (i in 1:nids) {
+
+## Initialize storage
+output = array(NA, c(nlon,nlat,nt))
+
+## Loop over times
+for (t in 1:nt) {
   
-  buffer = 1*(input == ids[i])
-  output[,,i] = buffer*ids[i]
+  ## Load data
+  input = ncvar_get(nci, varid, c(1,1,t), c(-1,-1,1))
+
+  ## Extract object ids
+  ids = sort(unique(as.numeric(input)))
+  ids = ids[ids > 0 & !is.na(ids)]
+  nids = length(ids)
+
+  ## Loop over ids
+  for (i in 1:nids) {
+    
+    points = which(input == ids[i], arr.ind = TRUE)
+    output[cbind(points,t)] = ids[i]
+    buffer = matrix(0, nlon, nlat)
+    buffer[points] = 1
+    
+    indices = trace.contour(buffer)
+    indices[,1] = (indices[,1] - 1) %% nlon + 1
+    
+    yjm1 = -180
+    
+    ## Loop over indices
+    for (j in 1:nrow(indices)) {
+      
+      x = indices[j,1]
+      y = indices[j,2]
+      
+      ## Create stencil
+      if (y != yjm1) {
+        
+        y1 = min(y + dny,nlat)
+        y0 = max(y - dny, 1)
+        
+        dx  = (lon[2] - lon[1])*min(cos(pi*lat[y1]/180),cos(pi*lat[y0]/180))*dd
+        dnx = floor(threshold/dx)
+        
+        x1 = min(mx + dnx,nlon)
+        x0 = max(mx - dnx,1)
+        
+        grid = as.matrix(expand.grid(x0:x1,y0:y1))
+        dists = distances(c(180,lat[y]), cbind(lon[grid[,1]],lat[grid[,2]]))
+        
+        stencil = grid[dists <= threshold,]
+        stencil[,1] = stencil[,1] - mx
+        stencil[,2] = stencil[,2] - y
+        
+      }
+      
+      ## Use stencil to expand object
+      stencilj = stencil
+      stencilj[,1] = stencil[,1] + x
+      stencilj[,2] = stencil[,2] + y
+      stencilj = stencilj[1 <= stencilj[,2] & stencilj[,2] <= nlat,]
+      stencilj[,1] = (stencilj[,1] -1) %% nlon + 1
+      output[cbind(stencilj,t)] = ids[i]
+      
+      yjm1 = y
+      
+    } ## j
+    
+  } ## i
   
-  indices = trace.contour(buffer)
-  indices[,1] = (indices[,1] - 1) %% nlon + 1
+} ## t
 
-  yjm1 = -180
-  for (j in 1:nrow(indices)) {
-
-    x = indices[j,1]
-    y = indices[j,2]
-    
-    if (y != yjm1) {
-      
-      y1 = min(y + dny,nlat)
-      y0 = max(y - dny, 1)
-      
-      dx  = (lon[2] - lon[1])*min(cos(pi*lat[y1]/180),cos(pi*lat[y0]/180))*dd
-      dnx = floor(threshold/dx)
-      
-      x1 = min(mx + dnx,nlon)
-      x0 = max(mx - dnx,1)
-      
-      grid = as.matrix(expand.grid(x0:x1,y0:y1))
-      dists = distances(c(180,lat[y]), cbind(lon[grid[,1]],lat[grid[,2]]))
-      
-      stencil = grid[dists <= threshold,]
-      stencil[,1] = stencil[,1] - mx
-      stencil[,2] = stencil[,2] - y
-      
-    }
-    
-    stencilj = stencil
-    stencilj[,1] = stencil[,1] + x
-    stencilj[,2] = stencil[,2] + y
-    stencilj = stencilj[1 <= stencilj[,2] & stencilj[,2] <= nlat,]
-    stencilj[,1] = (stencilj[,1] -1) %% nlon + 1
-    output[cbind(stencilj,i)] = ids[i]
-    
-    yjm1 = y
-
-  } ## j
-  
-} ## i
-
-check = apply(output, c(1,2), function(x) sum(x != 0))
-
-image(lon, lat, check)
+image(lon, lat, output[,,1])
 contour(lon, lat, input, add = TRUE, levels = 1:max(ids))
