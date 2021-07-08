@@ -27,69 +27,70 @@ trace.contour = function(x) {
   nx = nrow(x)
   ny = ncol(x)
   
-  ## Expand domain to allow for objects on top and bottom rows
+  ## Expand domain to allow for points on top and bottom rows
   xx = matrix(0, nx, ny + 2)
   xx[,2:(ny + 1)] = x
   ny = ny + 2
   
-  ## Find first meridian with no points in it
-  ## Need to start from leftmost point in object, this avoids finding the
-  ## right side of a wrapped object which is stored on the left.
-  i0 = 0
-  total = 1
-  while(total > 0 & i0 <= nx) {
-    i0 = i0 + 1
-    total = sum(x[i0,])
-  }
-  i0 = (i0 - 1) %% nx + 1
-  
-  ## Find first filled point, scanning from meridians from bottom to top and
-  ## left to right
-  c = c(1,1)
-  skip = FALSE
-  for (i in i0:nx) {
-    for (j in 1:ny) {
-      if (x[i,j] == 1) {
-        s = c(i,j)
-        skip = TRUE
-        break
-      } else {
-        c = c(i,j)
+  ## Find starting point, scanning from bottom to top and left to right
+  i = 1
+  search = TRUE
+  while (i <= nx & search) {
+    j = 2
+    while (j <= ny - 1 & search) {
+      if (xx[i,j] == 1) {
+        start = c(i,j)
+        search = FALSE
       }
+      j = j + 1
     } ## j
-    if (skip)
-      break
+    i = i + 1
   } ## i
   
+  ## Initialize storage
+  boundary = matrix(NA, 0.5*nx*ny, 2)
+  
   ## Trace contour using Moore-Neighbor tracing
-  p = s
-  B = p
-  c0 = c
-  cm1 = c
-  c = move.clockwise(c, p)
-  cm1x = (cm1[1] - 1) %% nx + 1
-  cm1y = cm1[2]
-  cx = (c[1] - 1) %% nx + 1
-  cy = c[2]
-  while(cx != s[1] | cy != s[2] | cm1x != c0[1] | cm1y != c0[2]) {
-    ## If
-    if (x[cx,cy] == 1) {
-      B = cbind(B,c)
-      p = c
-      c = cm1
-      c = move.clockwise(c, p)
+  point = start                              ## Set pivot point to start point
+  current = start                            ## Set search point to entry point
+  current[2] = current[2] - 1
+  previous = current                         ## Set fake previous search point
+  current = move.clockwise(current, point)   ## Advance search point
+  currentr = current
+  currentr[1] = (currentr[1] - 1) %% nx + 1  ## Real coords of current point
+  previousr = previous
+  point1 = c(-1,-1)
+  current1 = c(-1,-1)
+  n = 0                                     ## Initialize counter
+  while(any(currentr != point1) | any(previousr != current1)) {
+    ## Check if point found
+    if (xx[t(currentr)] == 1) {
+      ## If point found store it, ...
+      n = n + 1                      ## Increment counter
+      point = current                ## Set pivot point to search point
+      boundary[n,] = currentr        ## Record found point
+      if (n == 1) {
+        point1 = currentr
+        current1 = previousr
+      }
+      current = previous             ## Set search point to entry point
+      currentr = previousr
     } else {
-      cm1 = c
-      cm1x = (cm1[1] - 1) %% nx + 1
-      cm1y = cm1[2]
-      c = move.clockwise(c, p)
+      ## ... otherwise advance search
+      previous  = current                       ## Set previous search point to current
+      previousr = currentr
+      current = move.clockwise(current, point)  ## Advance search point
+      currentr = current
+      currentr[1] = (currentr[1] - 1) %% nx + 1
     }
-    cx = (c[1] - 1) %% nx + 1
-    cy = c[2]
   } ## c != s
   
-  ## Remove added latitude and return
-  B[2,] = B[2,] - 1
-  t(B)
+  ## Remove excess rows, convert coordinates and remove added latitude
+  boundary = boundary[1:n,]
+#  boundary[,1] = (boundary[,1] - 1) %% nx + 1
+  boundary[,2] = boundary[,2] - 1
+  
+  ## Return boundary
+  return(boundary)
   
 }

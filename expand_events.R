@@ -12,12 +12,11 @@ source("src/invertlat.R")
 source("src/lonflip.R")
 source("src/tracecontour.R")
 
+filename = "cyclones_20000101T00.nc"
 
-filename = "../cyclone_id/tests/output/cyclones_20000102T00.nc"
 varid = "idclust"
 
 threshold = 250
-
 
 ## Open file
 nci = nc_open(filename)
@@ -73,8 +72,7 @@ for (t in 1:nt) {
     buffer[points] = 1
     
     indices = trace.contour(buffer)
-    indices[,1] = (indices[,1] - 1) %% nlon + 1
-    
+
     yjm1 = -180
     
     ## Loop over indices
