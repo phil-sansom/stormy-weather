@@ -47,49 +47,61 @@ trace.contour = function(x) {
     i = i + 1
   } ## i
   
-  ## Initialize storage
-  boundary = matrix(NA, 0.5*nx*ny, 2)
-  
-  ## Trace contour using Moore-Neighbor tracing
-  point = start                              ## Set pivot point to start point
-  current = start                            ## Set search point to entry point
-  current[2] = current[2] - 1
-  previous = current                         ## Set fake previous search point
-  current = move.clockwise(current, point)   ## Advance search point
-  currentr = current
-  currentr[1] = (currentr[1] - 1) %% nx + 1  ## Real coords of current point
-  previousr = previous
-  point1 = c(-1,-1)
-  current1 = c(-1,-1)
-  n = 0                                     ## Initialize counter
-  while(any(currentr != point1) | any(previousr != current1)) {
-    ## Check if point found
-    if (xx[t(currentr)] == 1) {
-      ## If point found store it, ...
-      n = n + 1                      ## Increment counter
-      point = current                ## Set pivot point to search point
-      boundary[n,] = currentr        ## Record found point
-      if (n == 1) {
-        point1 = currentr
-        current1 = previousr
+  ## Check if there are more points to be found
+  surround =   sum(xx[((start[1] - 1):(start[1] + 1) - 1) %% nx + 1,
+                      (start[2] - 1):(start[2] + 1)])
+  if (surround > 1) {
+    
+    ## Initialize storage
+    boundary = matrix(NA, 0.5*nx*ny, 2)
+    
+    ## Trace contour using Moore-Neighbor tracing
+    point = start                              ## Set pivot point to start point
+    current = start                            ## Set search point to entry point
+    current[2] = current[2] - 1
+    previous = current                         ## Set fake previous search point
+    current = move.clockwise(current, point)   ## Advance search point
+    currentr = current
+    currentr[1] = (currentr[1] - 1) %% nx + 1  ## Real coords of current point
+    previousr = previous
+    point1 = c(-1,-1)
+    current1 = c(-1,-1)
+    n = 0                                     ## Initialize counter
+    while(any(currentr != point1) | any(previousr != current1)) {
+      ## Check if point found
+      if (xx[t(currentr)] == 1) {
+        ## If point found store it, ...
+        n = n + 1                      ## Increment counter
+        point = current                ## Set pivot point to search point
+        boundary[n,] = currentr        ## Record found point
+        if (n == 1) {
+          point1 = currentr
+          current1 = previousr
+        }
+        current = previous             ## Set search point to entry point
+        currentr = previousr
+      } else {
+        ## ... otherwise advance search
+        previous  = current                       ## Set previous search point to current
+        previousr = currentr
+        current = move.clockwise(current, point)  ## Advance search point
+        currentr = current
+        currentr[1] = (currentr[1] - 1) %% nx + 1
       }
-      current = previous             ## Set search point to entry point
-      currentr = previousr
-    } else {
-      ## ... otherwise advance search
-      previous  = current                       ## Set previous search point to current
-      previousr = currentr
-      current = move.clockwise(current, point)  ## Advance search point
-      currentr = current
-      currentr[1] = (currentr[1] - 1) %% nx + 1
-    }
-  } ## c != s
-  
-  ## Remove excess rows, convert coordinates and remove added latitude
-  boundary = boundary[1:n,]
-#  boundary[,1] = (boundary[,1] - 1) %% nx + 1
+    } ## c != s
+    
+    ## Remove excess rows
+    boundary = boundary[1:n,]
+    
+  } else {
+
+    boundary = t(start)
+
+  }
+ 
+  ## Remove added latitude
   boundary[,2] = boundary[,2] - 1
-  
+     
   ## Return boundary
   return(boundary)
   
