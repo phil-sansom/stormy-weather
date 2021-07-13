@@ -157,7 +157,7 @@ ncatt_put(nco, 0, "threshold", threshold)
 history = paste0(format(Sys.time(), "%FT%XZ%z"), ": ", "./expand_events.R ",
                  filename, " ", varid, " ", threshold)
 if ("history" %in% names(global.attributes))
-  history = paste(global.attributes$history, history, sep = "\n")
+  history = paste(history, global.attributes$history, sep = "\n")
 ncatt_put(nco, 0, "history", history)
 
 ## Close output file
