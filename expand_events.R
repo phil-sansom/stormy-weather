@@ -4,7 +4,6 @@
 library(ncdf4)
 
 ## Load source
-source("src/datetime.R")
 source("src/distance.R")
 source("src/distances.R")
 source("src/invertlat.R")
@@ -26,19 +25,6 @@ lat = as.numeric(nci$dim$lat$vals)
 times = ncvar_get(nci, "time")
 time_units = ncatt_get(nci, "time", "units")$value
 calendar = ncatt_get(nci, "time", "calendar")$value
-facets = strsplit(time_units, " ")[[1]]
-units = strsplit(time_units, " ")[[1]][1]
-if (length(facets) == 3) {
-  t0 = strptime(facets[3], format = "%Y-%m-%d", tz = "UTC")
-} else if (length(facets) == 4) {
-  t0 = strptime(paste(facets[3:4], collapse = " "),
-                format = "%Y-%m-%d %H:%M:%OS", tz = "UTC")
-} else if (length(facets) == 5) {
-  t0 = strptime(paste(facets[3:5], collapse = " "),
-                format = "%Y-%m-%d %H:%M:%OS %z", tz = "UTC")
-}
-t0 = format(t0, "%Y%m%dT%H%M%S")
-dates = extract.dates(t0, times, calendar, units)
 nlon = length(lon)
 nlat = length(lat)
 nt = length(times)
