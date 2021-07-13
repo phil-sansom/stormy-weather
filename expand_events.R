@@ -12,9 +12,9 @@ source("src/tracecontour.R")
 
 ## Parse arguments
 args = commandArgs(TRUE)
-filename  = as.character(args[1])
+threshold = as.numeric(args[1])
 varid     = as.character(args[2])
-threshold = as.numeric(args[3])
+filename  = as.character(args[3])
 
 ## Open file
 nci = nc_open(filename)
