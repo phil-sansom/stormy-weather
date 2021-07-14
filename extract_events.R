@@ -12,8 +12,8 @@ args = commandArgs(TRUE)
 maskid  = as.character(args[1])  ## Threshold variable
 thresh  = as.character(args[2])  ## Threshold file
 varid   = as.character(args[3])  ## Variable name
-infile  = as.character(args[3])  ## Input file
-outfile = as.character(args[4])  ## Output file
+infile  = as.character(args[4])  ## Input file
+outfile = as.character(args[5])  ## Output file
 
 ## Read threshold file
 nc = nc_open(thresh)
