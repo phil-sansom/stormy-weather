@@ -54,9 +54,6 @@ output = array(0, c(nlon,nlat,nt))
 ## Loop over times
 for (t in 1:nt) {
   
-  ## Echo time
-  print(t)
-  
   ## Load data
   input = ncvar_get(nci, varid, c(1,1,t), c(-1,-1,1))
 
