@@ -15,11 +15,6 @@ varid   = as.character(args[3])  ## Variable name
 infile  = as.character(args[3])  ## Input file
 outfile = as.character(args[4])  ## Output file
 
-maskid = "quantiles"
-varid = "fg10"
-thresh = "data/quantile_fg10_djf.nc"
-infile = "data/erai_fg10_200001.nc"
-
 ## Read threshold file
 nc = nc_open(thresh)
 threshold = ncvar_get(nc, maskid)
