@@ -14,10 +14,11 @@ source("src/tracecontour.R")
 args = commandArgs(TRUE)
 threshold = as.numeric(args[1])
 varid     = as.character(args[2])
-filename  = as.character(args[3])
+infile    = as.character(args[3])
+outfile   = as.character(args[4])
 
 ## Open file
-nci = nc_open(filename)
+nci = nc_open(infile)
 
 ## Extract dimensions
 lon = as.numeric(nci$dim$lon$vals)
@@ -119,10 +120,6 @@ for (t in 1:nt) {
 atts = global.attributes[! names(global.attributes) %in% "history"]
 make_missing_value = nci$var[[varid]]$make_missing_value
 
-## Filename
-outfile = tools::file_path_sans_ext(filename)
-outfile = paste0(outfile, "_expanded.nc")
-
 ## Define dimensions
 lon_nc  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
 lat_nc  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude" )
@@ -155,7 +152,7 @@ ncatt_put(nco, 0, "threshold", threshold)
 
 ## Write history
 history = paste0(format(Sys.time(), "%FT%XZ%z"), ": ", "./expand_events.R ",
-                 filename, " ", varid, " ", threshold)
+                 threshold, " ", varid, " ", infile, " ", outfile)
 if ("history" %in% names(global.attributes))
   history = paste(history, global.attributes$history, sep = "\n")
 ncatt_put(nco, 0, "history", history)
