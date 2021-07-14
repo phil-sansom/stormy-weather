@@ -175,7 +175,7 @@ for (att in names(atts))
 
 ## Write history
 history = paste0(format(Sys.time(), "%FT%XZ%z"), ": ", "./label_events.R ",
-                 infile, " ", outfile)
+                 varid, " ",infile, " ", outfile)
 if ("history" %in% names(global.attributes))
   history = paste(history, global.attributes$history, sep = "\n")
 ncatt_put(nco, 0, "history", history)
