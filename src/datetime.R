@@ -10,8 +10,8 @@ difftimes = function(date1, date2, calendar = "standard") {
   
   cal = tolower(calendar)
   if (cal %in% c("gregorian","standard","proleptic_gregorian")) {
-    d1 = as.POSIXlt(date1, format = "%Y%m%dT%H%M%S")
-    d2 = as.POSIXlt(date2, format = "%Y%m%dT%H%M%S")
+    d1 = as.POSIXlt(date1, format = "%Y%m%dT%H%M%S", tz = "UTC")
+    d2 = as.POSIXlt(date2, format = "%Y%m%dT%H%M%S", tz = "UTC")
     diff = as.numeric(difftime(d1, d2, units = "hours"))
   } else if (cal %in% c("noleap","365_day","all_leap","366_day","360_day")) {
     d1 = to.POSIXct(date1, calendar)
@@ -30,7 +30,7 @@ addtimes = function(date, diff, calendar = "standard", units = "hours") {
   if (cal %in% c("gregorian","standard","proleptic_gregorian")) {
     t0 = as.POSIXlt(date, format = "%Y%m%dT%H%M%S")
     td = as.difftime(diff, units = units)
-    dd = format(t0 + td, "%Y%m%dT%H%M%S")
+    dd = format(t0 + td, "%Y%m%dT%H%M%S", tz = "UTC")
   } else if (cal %in% c("noleap","365_day","all_leap","366_day","360_day")) {
     t0 = to.POSIXct(date, calendar)
     td = to.difftime(diff, units)
