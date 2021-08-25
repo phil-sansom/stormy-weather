@@ -127,12 +127,14 @@ time_nc = ncdim_def("time", time_units, times,
                     unlim = TRUE, calendar = calendar, longname = "Time")
 
 ## Define variables
+prec = nci$var[[varid]]$prec
+if (prec == "int")
+    prec = "integer"
 object_nc = ncvar_def(varid, nci$var[[varid]]$units, 
                       list(lon_nc,lat_nc,time_nc),  
                       if (make_missing_value) nci$var[[varid]]$missval else NULL,
                       longname = nci$var[[varid]]$longname, 
-                      prec = nci$var[[varid]]$prec,
-                      compression = 5)
+                      prec = prec, compression = 5)
 
 ## Create netCDF file
 nco = nc_create(outfile, list(object_nc))
