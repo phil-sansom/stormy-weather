@@ -6,8 +6,6 @@ library(ncdf4)
 ## Load source
 source("src/distance.R")
 source("src/distances.R")
-source("src/invertlat.R")
-source("src/lonflip.R")
 source("src/tracecontour.R")
 
 ## Parse arguments
@@ -42,6 +40,30 @@ mx = which.min(abs(lon - 180))
 ## Initialize storage
 output = array(0, c(nlon,nlat,nt))
 
+## Create stencil library
+stencils = list()
+for (i in 1:nlat) {
+  
+  y1 = min(i + dny,nlat)
+  y0 = max(i - dny, 1)
+  
+  dx  = (lon[2] - lon[1])*min(cos(pi*lat[y1]/180),cos(pi*lat[y0]/180))*dd
+  dnx = floor(threshold/dx)
+  
+  x1 = min(mx + dnx,nlon)
+  x0 = max(mx - dnx,1)
+  
+  grid = as.matrix(expand.grid(x0:x1,y0:y1))
+  dists = distances(c(180,lat[i]), cbind(lon[grid[,1]],lat[grid[,2]]))
+  
+  stencil = grid[dists <= threshold,]
+  stencil[,1] = stencil[,1] - mx
+  stencil[,2] = stencil[,2] - i
+  
+  stencils[[i]] = stencil
+  
+} ## i
+
 ## Loop over times
 for (t in 1:nt) {
   
@@ -66,39 +88,16 @@ for (t in 1:nt) {
     
     indices = trace.contour(buffer)
 
-    yjm1 = -180
-    
     ## Loop over indices
     for (j in 1:nrow(indices)) {
       
       x = indices[j,1]
       y = indices[j,2]
       
-      ## Create stencil
-      if (y != yjm1) {
-        
-        y1 = min(y + dny,nlat)
-        y0 = max(y - dny, 1)
-        
-        dx  = (lon[2] - lon[1])*min(cos(pi*lat[y1]/180),cos(pi*lat[y0]/180))*dd
-        dnx = floor(threshold/dx)
-        
-        x1 = min(mx + dnx,nlon)
-        x0 = max(mx - dnx,1)
-        
-        grid = as.matrix(expand.grid(x0:x1,y0:y1))
-        dists = distances(c(180,lat[y]), cbind(lon[grid[,1]],lat[grid[,2]]))
-        
-        stencil = grid[dists <= threshold,]
-        stencil[,1] = stencil[,1] - mx
-        stencil[,2] = stencil[,2] - y
-        
-      }
-      
       ## Use stencil to expand object
-      stencilj = stencil
-      stencilj[,1] = stencil[,1] + x
-      stencilj[,2] = stencil[,2] + y
+      stencilj = stencils[[y]]
+      stencilj[,1] = stencils[[y]][,1] + x
+      stencilj[,2] = stencils[[y]][,2] + y
       stencilj = stencilj[1 <= stencilj[,2] & stencilj[,2] <= nlat,]
       stencilj[,1] = (stencilj[,1] -1) %% nlon + 1
       output[cbind(stencilj,t)] = ids[i]
@@ -112,9 +111,9 @@ for (t in 1:nt) {
 } ## t
 
 
-#############################
-## Write expanded cyclones ##
-#############################
+############################
+## Write expanded objects ##
+############################
 
 ## Attributes
 atts = global.attributes[! names(global.attributes) %in% "history"]
