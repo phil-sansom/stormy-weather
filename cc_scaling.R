@@ -21,23 +21,31 @@ plist = scan(pfiles, character(), -1, quiet = TRUE)
 prob = 0.99
 
 ## Max memory to use: Defaults to 16GB
-memory.to.use = 32*1024*1024*1024 
+memory.to.use = 8*1024*1024*1024 
 
 ## Minimum bin size
 min.size = 1000
 
 ## Read dimensions
 nc  = nc_open(tlist[1])
-lon = nc$dim$longitude$vals
-lat = nc$dim$latitude$vals
+lon0 = nc$dim$longitude$vals
+lat0 = nc$dim$latitude$vals
 calendar   = nc$dim$time$calendar
 time.units = nc$dim$time$units
 varname    = nc$var[[1]]$longname
 units      = nc$var[[1]]$units
 nc_close(nc)
 
-nx = length(lon)
-ny = length(lat)
+nx = length(lon0)
+ny = length(lat0)
+
+## Determine if we need to transform dimensions
+fliplon = any(lon0 >= 180)
+fliplat = lat0[1] > lat0[2]
+
+## Transform dimensions
+lon = if (fliplon) lonflip(matrix(0, length(lon0), length(lat0)), lon0)$lon else lon0
+lat = if (fliplat) rev(lat0) else lat0
 
 ## Read times
 time = numeric()
@@ -132,7 +140,20 @@ for (i in 1:n.chunks) {
   
 } ## i
 
+## Transform data
 precip = 1000*precip
+if (fliplon) {
+  for (i in 1:nb) {
+    temp[,,i] = lonflip(temp[,,i], lon0)$x
+    precip[,,i] = lonflip(precip[,,i], lon0)$x
+  } ## i
+}
+if (fliplat) {
+  for (i in 1:nb) {
+    temp[,,i] = invertlat(temp[,,i])
+    precip[,,i] = invertlat(precip[,,i])
+  } ## i
+}
 
 
 #######################
