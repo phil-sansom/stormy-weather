@@ -26,6 +26,9 @@ memory.to.use = 8*1024*1024*1024
 ## Minimum bin size
 min.size = 1000
 
+## Temperature smoothing
+smoothing = 0
+
 ## Read dimensions
 nc  = nc_open(tlist[1])
 lon0 = nc$dim$longitude$vals
@@ -59,7 +62,7 @@ for (file in tlist) {
 nt = length(time)
 
 ## Split into chunks
-total.size = as.double(nx)*as.double(ny)*as.double(nt)*8*2
+total.size = as.double(nx)*as.double(ny)*as.double(nt)*8*ifelse(smoothing > 0, 3, 2)
 n.chunks = ceiling(total.size/memory.to.use)
 chunk.size = ceiling(ny/n.chunks)
 chunks = data.frame(
@@ -69,8 +72,8 @@ chunks = data.frame(
 chunks$count[n.chunks] = ny - (n.chunks - 1)*chunk.size
 
 ## Number of bins
-nb = floor(nt/min.size)
-breaks = round(seq(0, nt, length.out = nb + 1))
+nb = floor((nt - 2*smoothing)/min.size)
+breaks = round(seq(0, nt - 2*smoothing, length.out = nb + 1))
 
 ## Initialize storage
 temp   = array(NA, c(nx,ny,nb), 
@@ -120,11 +123,23 @@ for (i in 1:n.chunks) {
   
   } ## j
   precip0[precip0 < 0] = 0
-  
+
+  ## Smooth temp data
+  if (smoothing > 0) {
+    temps = temp0
+    temp0[,,] = 0
+    for (t in (1+smoothing):(nt-smoothing))
+      for (s in -smoothing:+smoothing)
+        temp0[,,t] = temp0[,,t] + temps[,,t + s]
+    temp0 = temp0 / (2*smoothing + 1)
+    rm(temps)
+    gc()
+  }
+
   ## Bin data
   for (k in 1:nx) {
     for (l in 1:count) {
-      mask = order(temp0[k,l,])
+      mask = order(temp0[k,l,(1+smoothing):(nt-smoothing)]) + smoothing
       temp1 = temp0[k,l,mask]
       precip1 = precip0[k,l,mask]
       for (m in 1:nb) {
@@ -134,7 +149,7 @@ for (i in 1:n.chunks) {
       } ## m
     } ## l
   } ## k
-  
+
   rm(precip0,temp0,temp1,precip1)
 #  gc()
   
