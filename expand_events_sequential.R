@@ -1,0 +1,161 @@
+#!/usr/bin/env -S Rscript --vanilla
+
+## 25% slower than writing all at once
+
+## Load libraries
+library(ncdf4)
+
+## Load source
+source("src/distance.R")
+source("src/distances.R")
+source("src/tracecontour.R")
+
+## Parse arguments
+args = commandArgs(TRUE)
+threshold = as.numeric(args[1])
+varid     = as.character(args[2])
+infile    = as.character(args[3])
+outfile   = as.character(args[4])
+
+## Open file
+nci = nc_open(infile)
+
+## Extract dimensions
+lon = as.numeric(nci$dim$lon$vals)
+lat = as.numeric(nci$dim$lat$vals)
+times = ncvar_get(nci, "time")
+time_units = ncatt_get(nci, "time", "units")$value
+calendar = ncatt_get(nci, "time", "calendar")$value
+nlon = length(lon)
+nlat = length(lat)
+nt = length(times)
+
+## Extract attributes
+global.attributes = ncatt_get(nci, 0)
+
+dd = distance(c(0,0), c(0,1))
+dy = (lat[2] - lat[1])*dd
+
+dny = floor(threshold/dy)
+mx = which.min(abs(lon - 180))
+
+## Create stencil library
+stencils = list()
+for (i in 1:nlat) {
+  
+  y1 = min(i + dny,nlat)
+  y0 = max(i - dny, 1)
+  
+  dx  = (lon[2] - lon[1])*min(cos(pi*lat[y1]/180),cos(pi*lat[y0]/180))*dd
+  dnx = floor(threshold/dx)
+  
+  x1 = min(mx + dnx,nlon)
+  x0 = max(mx - dnx,1)
+  
+  grid = as.matrix(expand.grid(x0:x1,y0:y1))
+  dists = distances(c(180,lat[i]), cbind(lon[grid[,1]],lat[grid[,2]]))
+  
+  stencil = grid[dists <= threshold,]
+  stencil[,1] = stencil[,1] - mx
+  stencil[,2] = stencil[,2] - i
+  
+  stencils[[i]] = stencil
+  
+} ## i
+
+## Create output file
+atts = global.attributes[! names(global.attributes) %in% "history"]
+make_missing_value = nci$var[[varid]]$make_missing_value
+
+## Define dimensions
+lon_nc  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
+lat_nc  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude" )
+time_nc = ncdim_def("time", time_units, times,
+                    unlim = TRUE, calendar = calendar, longname = "Time")
+
+## Define variables
+object_nc = ncvar_def(varid, nci$var[[varid]]$units, 
+                      list(lon_nc,lat_nc,time_nc),  
+                      if (make_missing_value) nci$var[[varid]]$missval else NULL,
+                      longname = nci$var[[varid]]$longname, 
+                      prec = nci$var[[varid]]$prec,
+                      compression = 5)
+
+## Create netCDF file
+nco = nc_create(outfile, list(object_nc))
+
+## Write standard names
+ncatt_put(nco, "longitude", "standard_name", "longitude", prec = "text")
+ncatt_put(nco, "latitude", "standard_name", "latitude", prec = "text")
+ncatt_put(nco, "time", "standard_name", "time", prec = "text")
+
+## Write global attributes
+for (att in names(atts))
+  ncatt_put(nco, 0, att, atts[[att]])
+ncatt_put(nco, 0, "threshold", threshold)
+
+## Write history
+history = paste0(format(Sys.time(), "%FT%XZ%z"), ": ", "./expand_events.R ",
+                 threshold, " ", varid, " ", infile, " ", outfile)
+if ("history" %in% names(global.attributes))
+  history = paste(history, global.attributes$history, sep = "\n")
+ncatt_put(nco, 0, "history", history)
+
+## Loop over times
+for (t in 1:nt) {
+  
+  ## Echo time
+  print(t)
+  
+  ## Initialize storage
+  output = matrix(0, nlon, nlat)
+  
+  ## Load data
+  input = ncvar_get(nci, varid, c(1,1,t), c(-1,-1,1))
+
+  ## Extract object ids
+  ids = sort(unique(as.numeric(input)))
+  ids = ids[ids > 0 & !is.na(ids)]
+  nids = length(ids)
+
+  ## Loop over ids
+  for (i in 1:nids) {
+    
+    points = which(input == ids[i], arr.ind = TRUE)
+    output[points] = ids[i]
+    buffer = matrix(0, nlon, nlat)
+    buffer[points] = 1
+    
+    indices = trace.contour(buffer)
+
+    ## Loop over indices
+    for (j in 1:nrow(indices)) {
+      
+      x = indices[j,1]
+      y = indices[j,2]
+      
+      ## Use stencil to expand object
+      stencilj = stencils[[y]]
+      stencilj[,1] = stencils[[y]][,1] + x
+      stencilj[,2] = stencils[[y]][,2] + y
+      stencilj = stencilj[1 <= stencilj[,2] & stencilj[,2] <= nlat,]
+      stencilj[,1] = (stencilj[,1] -1) %% nlon + 1
+      output[stencilj] = ids[i]
+      
+      yjm1 = y
+      
+    } ## j
+    
+  } ## i
+  
+  ## Write data
+  ncvar_put(nco, varid, output, c(1,1,t), c(-1,-1,1))
+  
+} ## t
+
+## Close output file
+nc_close(nco)
+
+## Close input file
+nc_close(nci)
+
