@@ -1,12 +1,14 @@
 #!/usr/bin/env -S Rscript --vanilla
 
 ## Load libraries
+library(geosphere)
 library(ncdf4)
 
 ## Load source
-source("src/distance.R")
-source("src/distances.R")
 source("src/tracecontour.R")
+
+## Constants
+radius = 6378137
 
 ## Parse arguments
 args = commandArgs(TRUE)
@@ -19,56 +21,61 @@ outfile   = as.character(args[4])
 nci = nc_open(infile)
 
 ## Extract dimensions
-lon = as.numeric(nci$dim$lon$vals)
-lat = as.numeric(nci$dim$lat$vals)
-times = ncvar_get(nci, "time")
-time_units = ncatt_get(nci, "time", "units")$value
+lon  = as.numeric(nci$dim$lon$vals)
+lat  = as.numeric(nci$dim$lat$vals)
+time = ncvar_get(nci, "time")
+time.units = ncatt_get(nci, "time", "units")$value
 calendar = ncatt_get(nci, "time", "calendar")$value
-nlon = length(lon)
-nlat = length(lat)
+nx = length(lon)
+ny = length(lat)
 nt = length(times)
+
+## Assume regular grid
+dx = lon[2] - lon[1]
+dy = lat[2] - lat[1]
+
+## Total x domain size
+nxt = 360/dx
 
 ## Extract attributes
 global.attributes = ncatt_get(nci, 0)
 
-dd = distance(c(0,0), c(0,1))
-dy = (lat[2] - lat[1])*dd
-
-dny = floor(threshold/dy)
-mx = which.min(abs(lon - 180))
+dk  = radius*2*pi/360/1000  ## 1 degree in km at equator
+dky = dk*dy                 ## y grid distance in km
+dny = floor(threshold/dky)  ## Number of grid boxes to search in y direction
 
 ## Initialize storage
-output = array(0, c(nlon,nlat,nt))
+output = array(0, c(nx,ny,nt))
 
 ## Create stencil library
 stencils = list()
-for (i in 1:nlat) {
+for (i in 1:ny) {
   
-  y1 = min(i + dny,nlat)
+  y1 = min(i + dny,ny)
   y0 = max(i - dny, 1)
   
-  dx  = (lon[2] - lon[1])*min(cos(pi*lat[y1]/180),cos(pi*lat[y0]/180))*dd
-  dnx = floor(threshold/dx)
+  dkx = dx*min(cos(pi*lat[y1]/180),cos(pi*lat[y0]/180))*dk
+  dnx = floor(threshold/dkx)  ## Number of grid boxes to search in x direction
   
-  x1 = min(mx + dnx,nlon)
-  x0 = max(mx - dnx,1)
+  if (nxt/2 < nx & nx < nxt) {
+    dnx = min(dnx,nx)
+  } else {
+    dnx = min(dnx,floor(nxt/2))
+  }
+  x0 = -dnx
+  x1 = +dnx
+  lon1 = seq(x0*dx,x1*dx,dx)
   
   grid = as.matrix(expand.grid(x0:x1,y0:y1))
-  dists = distances(c(180,lat[i]), cbind(lon[grid[,1]],lat[grid[,2]]))
+  dists = distVincentySphere(c(0,lat[i]), 
+                             cbind(lon1[grid[,1]+dnx+1],lat[grid[,2]]))/1000
   
-  stencil = grid[dists <= threshold,]
-  stencil[,1] = stencil[,1] - mx
-  stencil[,2] = stencil[,2] - i
-  
-  stencils[[i]] = stencil
+  stencils[[i]] = grid[dists <= threshold,]
   
 } ## i
 
 ## Loop over times
 for (t in 1:nt) {
-  
-  ## Echo time
-  print(t)
   
   ## Load data
   input = ncvar_get(nci, varid, c(1,1,t), c(-1,-1,1))
@@ -83,7 +90,7 @@ for (t in 1:nt) {
     
     points = which(input == ids[i], arr.ind = TRUE)
     output[cbind(points,t)] = ids[i]
-    buffer = matrix(0, nlon, nlat)
+    buffer = matrix(0, nx, ny)
     buffer[points] = 1
     
     indices = trace.contour(buffer)
@@ -91,19 +98,19 @@ for (t in 1:nt) {
     ## Loop over indices
     for (j in 1:nrow(indices)) {
       
-      x = indices[j,1]
-      y = indices[j,2]
+      x = indices[i,1]
+      y = indices[i,2]
       
       ## Use stencil to expand object
-      stencilj = stencils[[y]]
-      stencilj[,1] = stencils[[y]][,1] + x
-      stencilj[,2] = stencils[[y]][,2] + y
-      stencilj = stencilj[1 <= stencilj[,2] & stencilj[,2] <= nlat,]
-      stencilj[,1] = (stencilj[,1] -1) %% nlon + 1
+      stencil = stencils[[y]]
+      stencil[,1] = stencil[,1] + x
+      if (nx < nxt) {
+        stencil = stencil[1 <= stencil[,1] & stencil[,1] <= nx,]
+      } else {
+        stencil[,1] = (stencil[,1] - 1) %% nx + 1
+      }
       output[cbind(stencilj,t)] = ids[i]
-      
-      yjm1 = y
-      
+
     } ## j
     
   } ## i
@@ -122,7 +129,7 @@ make_missing_value = nci$var[[varid]]$make_missing_value
 ## Define dimensions
 lon_nc  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
 lat_nc  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude" )
-time_nc = ncdim_def("time", time_units, times,
+time_nc = ncdim_def("time", time_units, time,
                     unlim = TRUE, calendar = calendar, longname = "Time")
 
 ## Define variables
@@ -161,4 +168,3 @@ nc_close(nco)
 
 ## Close input file
 nc_close(nci)
-
