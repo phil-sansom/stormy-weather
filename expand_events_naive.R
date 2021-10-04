@@ -47,10 +47,10 @@ for (i in 1:ny) {
   
   y1 = min(i + dny,ny)
   y0 = max(i - dny, 1)
-
+  
   dkx = dx*min(cos(pi*lat[y1]/180),cos(pi*lat[y0]/180))*dk
   dnx = floor(threshold/dkx)  ## Number of grid boxes to search in x direction
-
+  
   if (nxt/2 < nx & nx < nxt) {
     dnx = min(dnx,nx)
   } else {
@@ -63,50 +63,10 @@ for (i in 1:ny) {
   grid = as.matrix(expand.grid(x0:x1,y0:y1))
   dists = distVincentySphere(c(0,lat[i]), 
                              cbind(lon1[grid[,1]+dnx+1],lat[grid[,2]]))/1000
- 
+  
   stencils[[i]] = grid[dists <= threshold,]
   
 } ## i
-
-## Initialize storage
-output = array(0, c(nx,ny,nt))
-
-## Loop over time
-for (t in 1:nt) {
-  
-  print(t)
-  
-  ## Load data
-  input = ncvar_get(nci, varid, c(1,1,t), c(-1,-1,1))
-
-  ## Identify points for expansion
-  indices = which(input > 0, arr.ind = TRUE)
-
-  ## Loop over indices
-  for (i in 1:nrow(indices)) {
-    
-    x = indices[i,1]
-    y = indices[i,2]
-    
-    ## Use stencil to expand object
-    stencil = stencils[[y]]
-    stencil[,1] = stencil[,1] + x
-    if (nx < nxt) {
-      stencil = stencil[1 <= stencil[,1] & stencil[,1] <= nx,]
-    } else {
-      stencil[,1] = (stencil[,1] - 1) %% nx + 1
-    }
-    output[cbind(stencil,t)] = 1
-    
-  } ## i
-  
-
-} ## t
-
-
-############################
-## Write expanded objects ##
-############################
 
 ## Attributes
 atts = global.attributes[! names(global.attributes) %in% "history"]
@@ -116,7 +76,7 @@ make_missing_value = nci$var[[varid]]$make_missing_value
 lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
 lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude" )
 time.dim = ncdim_def("time", time.units, time,
-                    unlim = TRUE, calendar = calendar, longname = "Time")
+                     unlim = TRUE, calendar = calendar, longname = "Time")
 
 ## Define variables
 object_nc = ncvar_def(varid, nci$var[[varid]]$units, 
@@ -128,9 +88,6 @@ object_nc = ncvar_def(varid, nci$var[[varid]]$units,
 
 ## Create netCDF file
 nco = nc_create(outfile, list(object_nc))
-
-## Write data
-ncvar_put(nco, varid, output)
 
 ## Write standard names
 ncatt_put(nco, "longitude", "standard_name", "longitude", prec = "text")
@@ -148,6 +105,43 @@ history = paste0(format(Sys.time(), "%FT%XZ%z"), ": ", "./expand_events.R ",
 if ("history" %in% names(global.attributes))
   history = paste(history, global.attributes$history, sep = "\n")
 ncatt_put(nco, 0, "history", history)
+
+## Loop over times
+for (t in 1:nt) {
+  
+  print(t)
+  
+  ## Initialize storage
+  output = matrix(0, nx, ny)
+  
+  ## Load data
+  input = ncvar_get(nci, varid, c(1,1,t), c(-1,-1,1))
+  
+  ## Identify points for expansion
+  indices = which(input > 0, arr.ind = TRUE)
+  
+  ## Loop over indices
+  for (i in 1:nrow(indices)) {
+    
+    x = indices[i,1]
+    y = indices[i,2]
+    
+    ## Use stencil to expand object
+    stencil = stencils[[y]]
+    stencil[,1] = stencil[,1] + x
+    if (nx < nxt) {
+      stencil = stencil[1 <= stencil[,1] & stencil[,1] <= nx,]
+    } else {
+      stencil[,1] = (stencil[,1] - 1) %% nx + 1
+    }
+    output[stencil] = 1
+    
+  } ## i
+  
+  ## Write data
+  ncvar_put(nco, varid, output, c(1,1,t), c(-1,-1,1))
+  
+} ## t
 
 ## Close output file
 nc_close(nco)
