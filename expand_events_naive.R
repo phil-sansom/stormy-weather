@@ -108,9 +108,7 @@ ncatt_put(nco, 0, "history", history)
 
 ## Loop over times
 for (t in 1:nt) {
-  
-  print(t)
-  
+
   ## Initialize storage
   output = matrix(0, nx, ny)
   
