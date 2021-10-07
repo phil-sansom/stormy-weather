@@ -42,7 +42,7 @@ if (fliplat) {
 
 ## Get times
 times = ncvar_get(nci, "time")
-time_units = ncatt_get(nci, "time", "units")$value
+time.units = ncatt_get(nci, "time", "units")$value
 calendar = ncatt_get(nci, "time", "calendar")$value
 
 ## Dimensions
@@ -86,27 +86,27 @@ nc_close(nci)
 atts = global.attributes[! names(global.attributes) %in% "history"]
 
 ## Define dimensions
-lon_nc  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
-lat_nc  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude" )
-time_nc = ncdim_def("time", time_units, times,
-                    unlim = TRUE, calendar = calendar, longname = "Time")
+lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
+lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude" )
+time.dim = ncdim_def("time", time.units, times,
+                     unlim = TRUE, calendar = calendar, longname = "Time")
 
 ## Define variables
-events_nc = ncvar_def("events", "", list(lon_nc,lat_nc,time_nc),
+events.var = ncvar_def("events", "", list(lon.dim,lat.dim,time.dim),
                       longname = "Extreme events", 
                       prec = "byte",
                       compression = 5)
 
 ## Create netCDF file
-nco = nc_create(outfile, list(events_nc))
+nco = nc_create(outfile, list(events.var))
 
 ## Write data
 ncvar_put(nco, "events", output)
 
 ## Write standard names
 ncatt_put(nco, "longitude", "standard_name", "longitude", prec = "text")
-ncatt_put(nco, "latitude", "standard_name", "latitude", prec = "text")
-ncatt_put(nco, "time", "standard_name", "time", prec = "text")
+ncatt_put(nco, "latitude" , "standard_name", "latitude" , prec = "text")
+ncatt_put(nco, "time"     , "standard_name", "time"     , prec = "text")
 
 ## Write global attributes
 for (att in names(atts))
