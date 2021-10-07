@@ -57,8 +57,6 @@ for (t in 1:nt) {
   if (fliplon) {
     buffer = lonflip(input, lon0)$x
     input = buffer$x
-  } else {
-    lon = lon0
   }
   if (fliplat) {
     input = invertlat(input)
@@ -108,7 +106,9 @@ for (t in 1:nt) {
   ## Remove events not partially in central region
   i = 1
   while(i <= length(events)) {
-    if (all(events[[i]]$x > 2*nx) | any(events[[i]]$x <= nx)) {
+    if (all(events[[i]]$x > 2*nx) | 
+        (any(events[[i]]$x <= nx) & 
+         ! any(lat[events[[i]]$y] == -90 | lat[events[[i]]$y] == +90)))  {
       events = events[-i]
     } else {
       events[[i]]$x = (events[[i]]$x - 1) %% nx + 1
