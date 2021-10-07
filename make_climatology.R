@@ -21,7 +21,7 @@ probs = c(0.005,0.01,0.02,0.025,0.05,0.10,0.25,0.50,
 memory.to.use = 16*1024*1024*1024 
 
 ## Read dimensions
-nc  = nc_open(file.list[1])
+nc  = nc_open(infiles[1])
 lon = nc$dim$longitude$vals
 lat = nc$dim$latitude$vals
 calendar   = nc$dim$time$calendar
