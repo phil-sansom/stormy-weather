@@ -5,9 +5,8 @@ library(ncdf4)
 
 ## Parse arguments
 args = commandArgs(TRUE)
-varid   = as.character(args[1])
-infiles = as.character(args[2])
-outfile = as.character(args[3])
+infiles = as.character(args[1])
+outfile = as.character(args[2])
 
 ## Read file list
 file.list = scan(infiles, character(), -1, quiet = TRUE)
@@ -25,8 +24,8 @@ lon = nc$dim$longitude$vals
 lat = nc$dim$latitude$vals
 calendar   = nc$dim$time$calendar
 time.units = nc$dim$time$units
-varname    = nc$var[[varid]]$longname
-units      = nc$var[[varid]]$units
+varname    = nc$var[[1]]$longname
+units      = nc$var[[1]]$units
 nc_close(nc)
 
 np = length(probs)
@@ -85,7 +84,7 @@ for (i in 1:n.chunks) {
 
     ## Load data
     mask = seq(t1, t1 + ntj - 1, 1)
-    chunk[,,mask] = ncvar_get(nc, varid, c(1,start,1), c(nx,count,ntj))
+    chunk[,,mask] = ncvar_get(nc, start = c(1,start,1), count = c(nx,count,ntj))
 
     ## Close connection
     nc_close(nc)
