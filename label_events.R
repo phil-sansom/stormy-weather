@@ -72,9 +72,8 @@ for (t in 1:nt) {
   xx[2:(nrow(buffer)+1),2:(ncol(buffer)+1)] = buffer
   
   ## Buffer dimensions
-  nx = nrow(xx)
-  ny = ncol(xx)
-  
+  nx1 = nrow(xx)
+
   ## Identify events
   nevents = 0
   events = list()
@@ -86,15 +85,15 @@ for (t in 1:nt) {
     nevents = nevents + 1
     
     ## Starting point
-    x0 = points[npoints] %% nx
-    y0 = points[npoints] %/% nx + 1
+    x0 = points[npoints] %% nx1
+    y0 = points[npoints] %/% nx1 + 1
     
     ## Find all points connected to the starting point
     current = find.connected.component(xx, x0, y0)
     event = list()
     event$points = which(current > 0)
-    event$x = event$points %% nx - 1
-    event$y = event$points %/% nx #+ 1 - 1
+    event$x = event$points %% nx1 - 1
+    event$y = event$points %/% nx1 #+ 1 - 1
     
     ## Store event
     events[[nevents]] = event
@@ -142,11 +141,11 @@ make_missing_value = nci$var[[1]]$make_missing_value
 ## Define dimensions
 lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
 lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude" )
-time.dim = ncdim_def("time", time.units, times,
+time.dim = ncdim_def("time", time.units, time,
                      unlim = TRUE, calendar = calendar, longname = "Time")
 
 ## Define variables
-events.var = ncvar_def("events", "", list(lon.dim,lat.dim,time.dim), 0,
+events.var = ncvar_def("events", "", list(lon.dim,lat.dim,time.dim),
                       longname = "Extreme events", 
                       prec = "short",
                       compression = 5)
