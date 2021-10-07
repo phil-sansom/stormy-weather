@@ -21,7 +21,7 @@ lon0 = as.numeric(nci$dim$lon$vals)
 lat0 = as.numeric(nci$dim$lat$vals)
 nlon = length(lon0)
 nlat = length(lat0)
-fliplon = lon0[1] < 0
+fliplon = any(lon0[1] > 180)
 fliplat = lat0[1] > lat0[2]
 if (fliplon) {
   lon = lonflip(matrix(0, nlon, nlat), lon)$lon
