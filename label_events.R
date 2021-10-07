@@ -10,9 +10,8 @@ source("src/lonflip.R")
 
 ## Parse arguments
 args = commandArgs(TRUE)
-varid   = as.character(args[1])
-infile  = as.character(args[2])
-outfile = as.character(args[3])
+infile  = as.character(args[1])
+outfile = as.character(args[2])
 
 ## Open file
 nci = nc_open(infile)
@@ -55,7 +54,7 @@ output = array(0, c(nlon,nlat,nt))
 for (t in 1:nt) {
   
   ## Load data
-  input = ncvar_get(nci, varid, c(1,1,t), c(-1,-1,1))
+  input = ncvar_get(nci, start = c(1,1,t), count = c(-1,-1,1))
 
   ## Fix lon and lat if required  
   if (fliplon) {
@@ -141,7 +140,7 @@ nc_close(nci)
 
 ## Attributes
 atts = global.attributes[! names(global.attributes) %in% "history"]
-make_missing_value = nci$var[[varid]]$make_missing_value
+make_missing_value = nci$var[[1]]$make_missing_value
 
 ## Define dimensions
 lon_nc  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
@@ -172,7 +171,7 @@ for (att in names(atts))
 
 ## Write history
 history = paste0(format(Sys.time(), "%FT%XZ%z"), ": ", "./label_events.R ",
-                 varid, " ",infile, " ", outfile)
+                 infile, " ", outfile)
 if ("history" %in% names(global.attributes))
   history = paste(history, global.attributes$history, sep = "\n")
 ncatt_put(nco, 0, "history", history)
