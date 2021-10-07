@@ -158,8 +158,8 @@ ncatt_put(nc, "time"     , "standard_name", "time"     , prec = "text")
 
 ## Write climatological time axis
 ncatt_put(nc, "time", "climatology", "climatology_bounds", prec = "text")
-ncatt_put(nc, "mean", "cell_mthods", "time: mean", prec = "text")
-ncatt_put(nc, "sd", "cell_mthods", "time: standard_deviation", prec = "text")
-ncatt_put(nc, "quantiles", "cell_mthods", "time: quantile", prec = "text")
+ncatt_put(nc, "mean", "cell_methods", "time: mean", prec = "text")
+ncatt_put(nc, "sd", "cell_methods", "time: standard_deviation", prec = "text")
+ncatt_put(nc, "quantiles", "cell_methods", "time: quantile", prec = "text")
 
 nc_close(nc)
