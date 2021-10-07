@@ -27,10 +27,11 @@ nx = length(lon0)
 ny = length(lat0)
 nt = length(time)
 
+## Transform dimensions, if necessary
 fliplon = any(lon0[1] > 180)
 fliplat = lat0[1] > lat0[2]
 if (fliplon) {
-  lon = lonflip(matrix(0, nlon, nlat), lon)$lon
+  lon = lonflip(matrix(0, nx, ny), lon)$lon
 } else {
   lon = lon0
 }
@@ -40,15 +41,11 @@ if (fliplat) {
   lat = lat0
 }
 
-## Get times
-
-## Dimensions
-
 ## Extract attributes
 global.attributes = ncatt_get(nci, 0)
 
 ## Initialize storage
-output = array(0, c(nlon,nlat,nt))
+output = array(0, c(nx,ny,nt))
 
 ## Loop over times
 for (t in 1:nt) {
@@ -112,18 +109,18 @@ for (t in 1:nt) {
   ## Remove events not partially in central region
   i = 1
   while(i <= length(events)) {
-    if (all(events[[i]]$x > 2*nlon) | any(events[[i]]$x <= nlon)) {
+    if (all(events[[i]]$x > 2*nx) | any(events[[i]]$x <= nx)) {
       events = events[-i]
     } else {
-      events[[i]]$x = (events[[i]]$x - 1) %% nlon + 1
-      events[[i]]$points = (events[[i]]$y - 1)*nlon + events[[i]]$x
+      events[[i]]$x = (events[[i]]$x - 1) %% nx + 1
+      events[[i]]$points = (events[[i]]$y - 1)*nx + events[[i]]$x
       i = i + 1
     }
   }
   nevents = length(events)
   
   ## Store events
-  result = matrix(0, nlon, nlat)
+  result = matrix(0, nx, ny)
   for (i in 1:nevents)
     result[events[[i]]$points] = i
   output[,,t] = result
