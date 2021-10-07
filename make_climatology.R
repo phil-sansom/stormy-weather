@@ -3,6 +3,10 @@
 ## Load libraries
 library(ncdf4)
 
+## Load source
+source("src/invertlat.R")
+source("src/lonflip.R")
+
 ## Parse arguments
 args = commandArgs(TRUE)
 nargs = length(args)
@@ -107,6 +111,22 @@ for (i in 1:n.chunks) {
 } ## i
 
 rm(chunk,buffer)
+
+## Transform data, if necessary
+if (any(lon > 180)) {
+  means = lonflip(means, lon)$x
+  sds   = lonflip(sds  , lon)$x
+  for (p in 1:np)
+    quantiles[,,p] = lonflip(quantiles[,,p], lon)$x
+  lon = lonflip(matrix(0, nx, ny), lon)$lon
+}
+if (lat[1] > lat[2]) {
+  means = invertlat(means)
+  sds   = invertlat(sds)
+  for (p in 1:np)
+    quantiles[,,p] = invertlat(quantiles[,,p])
+  lat = rev(lat)
+}
 
 
 #######################
