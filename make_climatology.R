@@ -112,36 +112,41 @@ rm(chunk,buffer)
 ## Write climatology ##
 #######################
 
+## Make climatology attributes
+interval = time[2] - time[1]
+climatology.time = median(c(time,time[length(time)] + interval))
+climatology.bounds = c(time[1],time[length(time)] + interval)
+
 ## Define dimensions
-lon_nc  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
-lat_nc  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude")
-time_nc = ncdim_def("time", time.units, (time[1] + time[2])/2,
-                    unlim = TRUE, calendar = calendar, longname = "Time")
-prob_nc = ncdim_def("probability", "", probs, longname = "Probability")
-nv_nc = ncdim_def("bounds", "", 1:2, create_dimvar = FALSE)
+lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
+lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude")
+time.dim = ncdim_def("time", time.units, climatology.time,
+                     unlim = TRUE, calendar = calendar, longname = "Time")
+prob.dim = ncdim_def("probability", "", probs, longname = "Probability")
+nv.dim   = ncdim_def("bounds", "", 1:2, create_dimvar = FALSE)
 
 ## Define variables
-means_nc = ncvar_def("mean", units, list(lon_nc,lat_nc,time_nc),  
+means.var = ncvar_def("mean", units, list(lon.dim,lat.dim,time.dim),  
                      longname = "Mean", prec = "double",
                      compression = 5)
-sds_nc   = ncvar_def("sd", units, list(lon_nc,lat_nc,time_nc),  
+sds.var   = ncvar_def("sd", units, list(lon.dim,lat.dim,time.dim),  
                      longname = "Standard deviation", prec = "double",
                      compression = 5)
-quant_nc = ncvar_def("quantiles", units, list(lon_nc,lat_nc,prob_nc,time_nc),  
+quant.var = ncvar_def("quantiles", units, 
+                     list(lon.dim,lat.dim,prob.dim,time.dim),  
                      longname = "Quantiles", prec = "double",
                      compression = 5)
-clim_nc  = ncvar_def("climatology_bounds", "", list(nv_nc,time_nc),
+clim.var  = ncvar_def("climatology_bounds", "", list(nv.dim,time.dim),
                      prec = "double", compression = 5)
 
-
 ## Create netCDF file
-nc = nc_create(outfile, list(clim_nc, means_nc, sds_nc, quant_nc))
+nc = nc_create(outfile, list(clim.var,means.var,sds.var,quant.var))
 
 ## Write data
 ncvar_put(nc, "mean"     , means    )
 ncvar_put(nc, "sd"       , sds      )
 ncvar_put(nc, "quantiles", quantiles)
-ncvar_put(nc, "climatology_bounds", c(time[1],time[nt]))
+ncvar_put(nc, "climatology_bounds", climatology.bounds)
 
 ## Write description
 ncatt_put(nc, 0, "Conventions", "CF-1.8", prec = "text")
