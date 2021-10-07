@@ -5,8 +5,9 @@ library(ncdf4)
 
 ## Parse arguments
 args = commandArgs(TRUE)
-infiles = as.character(args[1])
-outfile = as.character(args[2])
+nargs = length(args)
+infiles = as.character(args[1:(nargs-1)])
+outfile = as.character(args[nargs])
 
 ## Quantiles to compute
 probs = c(0.005,0.01,0.02,0.025,0.05,0.10,0.25,0.50,
@@ -160,7 +161,7 @@ ncatt_put(nc, "time"     , "standard_name", "time"     , prec = "text")
 ## Write climatological time axis
 ncatt_put(nc, "time", "climatology", "climatology_bounds", prec = "text")
 ncatt_put(nc, "mean", "cell_methods", "time: mean", prec = "text")
-ncatt_put(nc, "sd", "cell_methods", "time: standard_deviation", prec = "text")
+ncatt_put(nc, "sd"  , "cell_methods", "time: standard_deviation", prec = "text")
 ncatt_put(nc, "quantiles", "cell_methods", "time: quantile", prec = "text")
 
 nc_close(nc)
