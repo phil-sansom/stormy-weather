@@ -125,13 +125,13 @@ nv_nc = ncdim_def("bounds", "", 1:2, create_dimvar = FALSE)
 
 ## Define variables
 means_nc = ncvar_def("mean", units, list(lon_nc,lat_nc,time_nc),  
-                     longname = "Mean", prec = "float",
+                     longname = "Mean", prec = "double",
                      compression = 5)
 sds_nc   = ncvar_def("sd", units, list(lon_nc,lat_nc,time_nc),  
-                     longname = "Standard deviation", prec = "float",
+                     longname = "Standard deviation", prec = "double",
                      compression = 5)
 quant_nc = ncvar_def("quantiles", units, list(lon_nc,lat_nc,prob_nc,time_nc),  
-                     longname = "Quantiles", prec = "float",
+                     longname = "Quantiles", prec = "double",
                      compression = 5)
 clim_nc  = ncvar_def("climatology_bounds", "", list(nv_nc,time_nc),
                      prec = "double", compression = 5)
