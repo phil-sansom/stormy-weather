@@ -9,15 +9,13 @@ source("src/lonflip.R")
 
 ## Parse arguments
 args = commandArgs(TRUE)
-maskid  = as.character(args[1])  ## Threshold variable
-thresh  = as.character(args[2])  ## Threshold file
-varid   = as.character(args[3])  ## Variable name
-infile  = as.character(args[4])  ## Input file
-outfile = as.character(args[5])  ## Output file
+thresh  = as.character(args[1])  ## Threshold file
+infile  = as.character(args[2])  ## Input file
+outfile = as.character(args[3])  ## Output file
 
 ## Read threshold file
 nc = nc_open(thresh)
-threshold = ncvar_get(nc, maskid)
+threshold = ncvar_get(nc)
 nc_close(nc)
 
 ## Open input file
@@ -26,10 +24,10 @@ nci = nc_open(infile)
 ## Get longitudes and latitudes
 lon0 = as.numeric(nci$dim$lon$vals)
 lat0 = as.numeric(nci$dim$lat$vals)
-fliplon = lon0[1] < 0
+fliplon = any(lon0 > 180)
 fliplat = lat0[1] > lat0[2]
 if (fliplon) {
-  buffer = lonflip(threshold, lon)
+  buffer = lonflip(threshold, lon0)
   threshold = buffer$x
   lon = buffer$lon
 } else {
@@ -62,7 +60,7 @@ output = array(0, c(nlon,nlat,nt))
 for (t in 1:nt) {
   
   ## Load data
-  input = ncvar_get(nci, varid, c(1,1,t), c(-1,-1,1))
+  input = ncvar_get(nci, start = c(1,1,t), count = c(-1,-1,1))
 
   ## Fix lon and lat if required  
   if (fliplon) {
@@ -94,7 +92,7 @@ time_nc = ncdim_def("time", time_units, times,
                     unlim = TRUE, calendar = calendar, longname = "Time")
 
 ## Define variables
-events_nc = ncvar_def("events", "", list(lon_nc,lat_nc,time_nc), 0,
+events_nc = ncvar_def("events", "", list(lon_nc,lat_nc,time_nc),
                       longname = "Extreme events", 
                       prec = "byte",
                       compression = 5)
@@ -116,7 +114,7 @@ for (att in names(atts))
 
 ## Write history
 history = paste0(format(Sys.time(), "%FT%XZ%z"), ": ", "./extract_events.R ",
-                 maskid, " ", thresh, " ", varid, " ", infile, " ", outfile)
+                 thresh, " ", infile, " ", outfile)
 if ("history" %in% names(global.attributes))
   history = paste(history, global.attributes$history, sep = "\n")
 ncatt_put(nco, 0, "history", history)
