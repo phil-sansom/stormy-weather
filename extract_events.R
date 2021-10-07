@@ -15,46 +15,59 @@ outfile = as.character(args[3])  ## Output file
 
 ## Read threshold file
 nc = nc_open(thresh)
+lont = as.numeric(nc$dim$lon$vals)
+latt = as.numeric(nc$dim$lat$vals)
 threshold = ncvar_get(nc)
 nc_close(nc)
+
+## Transform threshold file, if necessary
+if (any(lont > 180)) {
+  buffer = lonflip(threshold, lont)
+  threshold = buffer$x
+  lont = buffer$lon
+}
+if (latt[1] > latt[2]) {
+  threshold = invertlat(threshold)
+  latt = rev(latt)
+}
 
 ## Open input file
 nci = nc_open(infile)
 
-## Get longitudes and latitudes
+## Get dimensions
 lon0 = as.numeric(nci$dim$lon$vals)
 lat0 = as.numeric(nci$dim$lat$vals)
+times = ncvar_get(nci, "time")
+time.units = ncatt_get(nci, "time", "units")$value
+calendar = ncatt_get(nci, "time", "calendar")$value
+
+nx = length(lon0)
+ny = length(lat0)
+nt = length(times)
+
+## Transform dimensions, if necessary
 fliplon = any(lon0 > 180)
 fliplat = lat0[1] > lat0[2]
 if (fliplon) {
-  buffer = lonflip(threshold, lon0)
-  threshold = buffer$x
-  lon = buffer$lon
+  lon = lonflip(matrix(0, nx, ny), lon0)$lon
 } else {
   lon = lon0
 }
 if (fliplat) {
-  threshold = invertlat(threshold)
   lat = rev(lat0)
 } else {
   lat = lat0
 }
 
-## Get times
-times = ncvar_get(nci, "time")
-time.units = ncatt_get(nci, "time", "units")$value
-calendar = ncatt_get(nci, "time", "calendar")$value
-
-## Dimensions
-nlon = length(lon)
-nlat = length(lat)
-nt = length(times)
+## Check compatibility of threshold and data
+if(!(identical(latt,lat) & identical(lont,lon)))
+  stop("Dimensions of threshold and data do not match")
 
 ## Extract attributes
 global.attributes = ncatt_get(nci, 0)
 
 ## Initialize storage
-output = array(0, c(nlon,nlat,nt))
+output = array(0, c(nx,ny,nt))
 
 ## Loop over times
 for (t in 1:nt) {
