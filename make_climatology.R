@@ -8,9 +8,6 @@ args = commandArgs(TRUE)
 infiles = as.character(args[1])
 outfile = as.character(args[2])
 
-## Read file list
-file.list = scan(infiles, character(), -1, quiet = TRUE)
-
 ## Quantiles to compute
 probs = c(0.005,0.01,0.02,0.025,0.05,0.10,0.25,0.50,
           0.75,0.90,0.95,0.975,0.98,0.99,0.995)
@@ -34,7 +31,7 @@ ny = length(lat)
 
 ## Read times
 time = numeric()
-for (file in file.list) {
+for (file in infiles) {
   
   nc   = nc_open(file)
   time = c(time,nc$dim$time$vals)
@@ -73,13 +70,13 @@ for (i in 1:n.chunks) {
   t1 = 1
 
   ## Loop over files
-  for (j in 1:length(file.list)) {
+  for (file in infiles) {
     
     ## Print status
-    print(file.list[j])
+    print(file)
     
     ## Open connection
-    nc = nc_open(file.list[j])
+    nc = nc_open(file)
     ntj = nc$dim$time$len
 
     ## Load data
@@ -92,7 +89,7 @@ for (i in 1:n.chunks) {
     ## Increment time counter
     t1 = t1 + ntj
   
-  } ## j
+  } ## file
   
   ## Compute climatologies and store
   mask = seq(start, start + count - 1, 1)
