@@ -21,7 +21,7 @@ plist = scan(pfiles, character(), -1, quiet = TRUE)
 prob = 0.99
 
 ## Max memory to use: Defaults to 16GB
-memory.to.use = 8*1024*1024*1024 
+memory.to.use = 16*1024*1024*1024 
 
 ## Minimum bin size
 min.size = 1000
@@ -84,9 +84,6 @@ precip = array(NA, c(nx,ny,nb),
 ## Loop over chunks
 for (i in 1:n.chunks) {
   
-  ## Print status
-  print(paste("Chunk:", i))
-  
   start = chunks$start[i]
   count = chunks$count[i]
   temp0 = array(NA, c(nx,count,nt))
@@ -97,6 +94,9 @@ for (i in 1:n.chunks) {
 
   ## Loop over files
   for (j in 1:length(tlist)) {
+    
+    ## Print status
+    print(paste("Chunk",i,"File",j))
     
     ## Open connections
     nct = nc_open(tlist[j])
@@ -116,8 +116,7 @@ for (i in 1:n.chunks) {
     nc_close(nct)
     nc_close(ncp)
     rm(buffer)
-#    gc()
-    
+
     ## Increment time counter
     t1 = t1 + ntj
   
@@ -126,6 +125,7 @@ for (i in 1:n.chunks) {
 
   ## Smooth temp data
   if (smoothing > 0) {
+    print(paste("Smoothing chunk", i))
     temps = temp0
     temp0[,,] = 0
     for (t in (1+smoothing):(nt-smoothing))
@@ -133,10 +133,10 @@ for (i in 1:n.chunks) {
         temp0[,,t] = temp0[,,t] + temps[,,t + s]
     temp0 = temp0 / (2*smoothing + 1)
     rm(temps)
-    gc()
   }
 
   ## Bin data
+  print(paste("Binning chunk", i))
   for (k in 1:nx) {
     for (l in 1:count) {
       mask = order(temp0[k,l,(1+smoothing):(nt-smoothing)]) + smoothing
@@ -149,13 +149,14 @@ for (i in 1:n.chunks) {
       } ## m
     } ## l
   } ## k
-
-  rm(precip0,temp0,temp1,precip1)
-#  gc()
   
+  ## Garbage collection
+  rm(precip0,temp0,temp1,precip1)
+
 } ## i
 
 ## Transform data
+print("Transforming data...")
 precip = 1000*precip
 if (fliplon) {
   for (i in 1:nb) {
@@ -174,6 +175,8 @@ if (fliplat) {
 #######################
 ## Write climatology ##
 #######################
+
+print("Writing data...")
 
 ## Define dimensions
 lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
