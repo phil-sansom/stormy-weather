@@ -29,6 +29,9 @@ nb = 12
 ## Temperature smoothing
 smoothing = 0
 
+## Threshold
+threshold = 0.1/1000
+
 ## Read dimensions
 nc  = nc_open(tlist[1])
 lon0 = nc$dim$longitude$vals
@@ -62,7 +65,7 @@ for (file in tlist) {
 nt = length(time)
 
 ## Split into chunks
-total.size = as.double(nx)*as.double(ny)*as.double(nt)*8*ifelse(smoothing > 0, 3, 2)
+total.size = as.double(nx)*as.double(ny)*as.double(nt)*8*ifelse(smoothing > 0, 4, 3)
 n.chunks = ceiling(total.size/memory.to.use)
 chunk.size = ceiling(ny/n.chunks)
 chunks = data.frame(
@@ -70,9 +73,6 @@ chunks = data.frame(
   count = rep(chunk.size, n.chunks)
 )
 chunks$count[n.chunks] = ny - (n.chunks - 1)*chunk.size
-
-## Breaks
-breaks = round(seq(0, nt - 2*smoothing, length.out = nb + 1))
 
 ## Initialize storage
 temp   = array(NA, c(nx,ny,nb), 
@@ -115,12 +115,14 @@ for (i in 1:n.chunks) {
     nc_close(nct)
     nc_close(ncp)
     rm(buffer)
+    gc()
 
     ## Increment time counter
     t1 = t1 + ntj
   
   } ## j
   precip0[precip0 < 0] = 0
+  gc()
 
   ## Smooth temp data
   if (smoothing > 0) {
@@ -132,8 +134,13 @@ for (i in 1:n.chunks) {
         temp0[,,t] = temp0[,,t] + temps[,,t + s]
     temp0 = temp0 / (2*smoothing + 1)
     rm(temps)
+    gc()
   }
 
+  ## Apply threshold
+  precip0[precip0 < threshold] = NA
+  gc()
+  
   ## Bin data
   print(paste("Binning chunk", i))
   for (k in 1:nx) {
@@ -141,7 +148,10 @@ for (i in 1:n.chunks) {
       mask = order(temp0[k,l,(1+smoothing):(nt-smoothing)]) + smoothing
       temp1 = temp0[k,l,mask]
       precip1 = precip0[k,l,mask]
-      
+      mask = !is.na(precip1)
+      temp1 = temp1[mask]
+      precip1 = precip1[mask]
+      breaks = round(seq(0, length(precip1), length.out = nb + 1))
       for (m in 1:nb) {
         slice = (breaks[m]+1):breaks[m+1]
         temp[k,start+l-1,m] = mean(temp1[slice], na.rm = TRUE)
@@ -151,6 +161,7 @@ for (i in 1:n.chunks) {
   } ## k
 
   rm(precip0,temp0,temp1,precip1)
+  gc()
 
 } ## i
 
