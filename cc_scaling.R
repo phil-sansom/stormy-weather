@@ -16,6 +16,7 @@ outfile = as.character(args[3])
 ## Read file lists
 tlist = scan(tfiles, character(), -1, quiet = TRUE)
 plist = scan(pfiles, character(), -1, quiet = TRUE)
+n.files = length(tlist)
 
 ## Quantile to compute
 prob = 0.99
@@ -24,7 +25,7 @@ prob = 0.99
 memory.to.use = 16*1024*1024*1024 
 
 ## Number of bins
-nb = 12
+nb = 24
 
 ## Temperature smoothing
 smoothing = 0
@@ -65,8 +66,14 @@ for (file in tlist) {
 nt = length(time)
 
 ## Split into chunks
-total.size = as.double(nx)*as.double(ny)*as.double(nt)*8*ifelse(smoothing > 0, 4, 3)
-n.chunks = ceiling(total.size/memory.to.use)
+## temp    = (nx,ny,nb)
+## precip  = (nx,ny,nb)
+## temp0   = (nx,count,nt)
+## precip0 = (nx,count,nt)
+## buffer  = (nx,count,ntj)
+total.size = 
+  as.double(nx)*as.double(ny)*as.double(nt)*8*2
+n.chunks   = ceiling(total.size/memory.to.use)
 chunk.size = ceiling(ny/n.chunks)
 chunks = data.frame(
   start = seq(0, n.chunks - 1, 1)*chunk.size + 1,
@@ -85,17 +92,17 @@ for (i in 1:n.chunks) {
   
   start = chunks$start[i]
   count = chunks$count[i]
-  temp0 = array(NA, c(nx,count,nt))
+  temp0   = array(NA, c(nx,count,nt))
   precip0 = array(NA, c(nx,count,nt))
   
   ## Initialize time counter
   t1 = 1
 
   ## Loop over files
-  for (j in 1:length(tlist)) {
+  for (j in 1:n.files) {
     
     ## Print status
-    print(paste("Chunk",i,"File",j))
+    print(paste0("Reading chunk ",i," of ",n.chunks,", file ",j," of ", n.files))
     
     ## Open connections
     nct = nc_open(tlist[j])
@@ -109,58 +116,65 @@ for (i in 1:n.chunks) {
     buffer = ncvar_get(nct, start = c(1,start,1), count = c(nx,count,ntj))
     temp0  [,,mask] = buffer
     buffer = ncvar_get(ncp, start = c(1,start,1), count = c(nx,count,ntj))
+    mask1 = which(buffer < 0)
+    buffer[mask1] = 0
+    mask1 = which(buffer < threshold)
+    buffer[mask1] = NA
     precip0[,,mask] = buffer
 
     ## Close connections
     nc_close(nct)
     nc_close(ncp)
-    rm(buffer)
+    rm(buffer,mask,mask1)
     gc()
 
     ## Increment time counter
     t1 = t1 + ntj
   
   } ## j
-  precip0[precip0 < 0] = 0
   gc()
 
-  ## Smooth temp data
+  # ## Smooth temp data
   if (smoothing > 0) {
-    print(paste("Smoothing chunk", i))
-    temps = temp0
-    temp0[,,] = 0
-    for (t in (1+smoothing):(nt-smoothing))
-      for (s in -smoothing:+smoothing)
-        temp0[,,t] = temp0[,,t] + temps[,,t + s]
-    temp0 = temp0 / (2*smoothing + 1)
-    rm(temps)
+    print(paste("Smoothing chunk",i,"of",n.chunks))
+    nn = 2*smoothing + 1
+    buffer = array(0, c(nx,count,nn))
+    for (k in 1:nt) {
+      kk = (k - 1) %% nn + 1
+      buffer[,,kk] = 0
+      mask = max(1,k - smoothing):min(k + smoothing,nt)
+      for (l in mask)
+        buffer[,,kk] = buffer[,,kk] + temp0[,,l]/length(mask)
+      if (k > smoothing)
+        temp0[,,k - smoothing] = buffer[,,(k - smoothing - 1) %% nn + 1]
+    } ## k
+    for (k in (nt - smoothing + 1):nt)
+      temp0[,,k] = buffer[,,(k - 1) %% nn + 1]
+    rm(mask,buffer,nn,kk)
     gc()
   }
 
-  ## Apply threshold
-  precip0[precip0 < threshold] = NA
-  gc()
-  
   ## Bin data
-  print(paste("Binning chunk", i))
+  print(paste("Binning chunk",i,"of",n.chunks))
   for (k in 1:nx) {
     for (l in 1:count) {
-      mask = order(temp0[k,l,(1+smoothing):(nt-smoothing)]) + smoothing
-      temp1 = temp0[k,l,mask]
+      mask    = order(temp0[k,l,(1 + smoothing):(nt - smoothing)]) + smoothing
+      temp1   = temp0  [k,l,mask]
       precip1 = precip0[k,l,mask]
-      mask = !is.na(precip1)
-      temp1 = temp1[mask]
+      mask    = !is.na(precip1)
+      temp1   = temp1  [mask]
       precip1 = precip1[mask]
-      breaks = round(seq(0, length(precip1), length.out = nb + 1))
+      breaks  = round(seq(0, length(precip1), length.out = nb + 1))
       for (m in 1:nb) {
-        slice = (breaks[m]+1):breaks[m+1]
-        temp[k,start+l-1,m] = mean(temp1[slice], na.rm = TRUE)
-        precip[k,start+l-1,m] = quantile(precip1[slice], probs = prob, na.rm = TRUE)
+        slice = (breaks[m] + 1):breaks[m + 1]
+        temp  [k,start + l - 1,m] = mean(temp1[slice], na.rm = TRUE)
+        precip[k,start + l - 1,m] = quantile(precip1[slice], probs = prob, 
+                                             na.rm = TRUE)
       } ## m
     } ## l
   } ## k
 
-  rm(precip0,temp0,temp1,precip1)
+  rm(precip0,temp0,temp1,precip1,mask,slice)
   gc()
 
 } ## i
@@ -170,13 +184,13 @@ print("Transforming data...")
 precip = 1000*precip
 if (fliplon) {
   for (i in 1:nb) {
-    temp[,,i] = lonflip(temp[,,i], lon0)$x
+    temp  [,,i] = lonflip(temp  [,,i], lon0)$x
     precip[,,i] = lonflip(precip[,,i], lon0)$x
   } ## i
 }
 if (fliplat) {
   for (i in 1:nb) {
-    temp[,,i] = invertlat(temp[,,i])
+    temp  [,,i] = invertlat(temp  [,,i])
     precip[,,i] = invertlat(precip[,,i])
   } ## i
 }
@@ -193,19 +207,18 @@ lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
 lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude")
 bin.dim  = ncdim_def("bin", "number", 1:nb, longname = "Bin")
 time.dim = ncdim_def("time", time.units, (time[2] + time[nt])/2,
-                    unlim = TRUE, calendar = calendar, longname = "Time")
+                     unlim = TRUE, calendar = calendar, longname = "Time")
 nv.dim = ncdim_def("bounds", "", 1:2, create_dimvar = FALSE)
 
 ## Define variables
 temp.var  = ncvar_def("temp", "K", list(lon.dim,lat.dim,bin.dim,time.dim),  
-                     longname = "Temperature", prec = "double",
-                     compression = 5)
+                      longname = "Temperature", prec = "double",
+                      compression = 5)
 precip.var = ncvar_def("precip", "mm", list(lon.dim,lat.dim,bin.dim,time.dim),  
-                     longname = "Precipitation", prec = "double",
-                     compression = 5)
+                       longname = "Precipitation", prec = "double",
+                       compression = 5)
 clim.var  = ncvar_def("climatology_bounds", "", list(nv.dim,time.dim),
-                     prec = "double")
-
+                      prec = "double")
 
 ## Create netCDF file
 nc = nc_create(outfile, list(clim.var, temp.var, precip.var))
