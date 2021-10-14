@@ -138,7 +138,7 @@ for (i in 1:n.chunks) {
     
     ## Print status
     print(paste0("Reading chunk ",i," of ",n.chunks,
-                 ",file ",j," of ", n.files))
+                 ", file ",j," of ", n.files))
     
     ## Open connections
     nct = nc_open(tlist[j])
@@ -220,7 +220,7 @@ for (i in 1:n.chunks) {
     } ## i
   }
   if (fliplat) {
-    for (i in 1:nb) {
+    for (k in 1:nb) {
       temp  [,,k] = invertlat(temp  [,,k])
       precip[,,k] = invertlat(precip[,,k])
     } ## i
