@@ -71,9 +71,9 @@ nt = length(time)
 dt = time[2] - time[1]
 
 ## Split into chunks
-total.size = 2*as.double(nx)*as.double(ny)*as.double(nt)*8
-n.chunks   = floor(total.size/memory.to.use)
-chunk.size = ceiling(ny/n.chunks)
+row.size   = nx*nt*8
+chunk.size = floor(memory.to.use/row.size/2)
+n.chunks   = ceiling(ny/chunk.size)
 chunks = data.frame(
   start = seq(0, n.chunks - 1, 1)*chunk.size + 1,
   count = rep(chunk.size, n.chunks)
