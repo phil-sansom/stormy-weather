@@ -1,5 +1,7 @@
 lonflip = function(x, lon) {
-  
+
+  if (!is.matrix(x))
+    dim(x) = c(length(x),1)
   if (lon[1] < 0) {
     mask0to180 =    0 <= lon & lon < 180
     mask180to0 = -180 <= lon & lon <   0

@@ -22,10 +22,10 @@ n.files = length(tlist)
 prob = 0.99
 
 ## Max memory to use: Defaults to 16GB
-memory.to.use = 16*1024*1024*1024 
+memory.to.use = 48*1024*1024*1024 
 
 ## Number of bins
-nb = 12
+nb = 24
 
 ## Temperature smoothing
 smoothing = 0
@@ -219,7 +219,7 @@ for (i in 1:n.chunks) {
       precip[,,k] = lonflip(precip[,,k], lon0)$x
     } ## i
   }
-  if (fliplat) {
+  if (fliplat & count > 1) {
     for (k in 1:nb) {
       temp  [,,k] = invertlat(temp  [,,k])
       precip[,,k] = invertlat(precip[,,k])
