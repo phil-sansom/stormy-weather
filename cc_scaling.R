@@ -25,7 +25,7 @@ prob = 0.99
 memory.to.use = 16*1024*1024*1024 
 
 ## Number of bins
-nb = 24
+nb = 12
 
 ## Temperature smoothing
 smoothing = 0
@@ -137,8 +137,8 @@ for (i in 1:n.chunks) {
   for (j in 1:n.files) {
     
     ## Print status
-    print(paste0("Reading chunk ",i," of ",n.chunks,", 
-                 file ",j," of ", n.files))
+    print(paste0("Reading chunk ",i," of ",n.chunks,
+                 ",file ",j," of ", n.files))
     
     ## Open connections
     nct = nc_open(tlist[j])
@@ -214,15 +214,15 @@ for (i in 1:n.chunks) {
   ## Transform data
   precip = 1000*precip
   if (fliplon) {
-    for (i in 1:nb) {
-      temp  [,,i] = lonflip(temp  [,,i], lon0)$x
-      precip[,,i] = lonflip(precip[,,i], lon0)$x
+    for (k in 1:nb) {
+      temp  [,,k] = lonflip(temp  [,,k], lon0)$x
+      precip[,,k] = lonflip(precip[,,k], lon0)$x
     } ## i
   }
   if (fliplat) {
     for (i in 1:nb) {
-      temp  [,,i] = invertlat(temp  [,,i])
-      precip[,,i] = invertlat(precip[,,i])
+      temp  [,,k] = invertlat(temp  [,,k])
+      precip[,,k] = invertlat(precip[,,k])
     } ## i
   }
   
@@ -230,14 +230,14 @@ for (i in 1:n.chunks) {
   print(paste("Writing chunk",i,"of",n.chunks))
   if (fliplat) {
     ncvar_put(nco, "temp", temp, 
-              start = c(1,ny - start - count + 2,1), count = c(nx,count,nb))
+              start = c(1,ny - start - count + 2,1,1), count = c(nx,count,nb,1))
     ncvar_put(nco, "precip", precip, 
-              start = c(1,ny - start - count + 2,1), count = c(nx,count,nb))
+              start = c(1,ny - start - count + 2,1,1), count = c(nx,count,nb,1))
   } else {
     ncvar_put(nco, "temp", temp, 
-              start = c(1,start,1), count = c(nx,count,nb))
+              start = c(1,start,1,1), count = c(nx,count,nb,1))
     ncvar_put(nco, "precip", precip, 
-              start = c(1,start,1), count = c(nx,count,nb))
+              start = c(1,start,1,1), count = c(nx,count,nb,1))
   }
   
 } ## i
