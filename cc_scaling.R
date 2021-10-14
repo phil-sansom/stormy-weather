@@ -22,10 +22,10 @@ n.files = length(tlist)
 prob = 0.99
 
 ## Max memory to use: Defaults to 16GB
-memory.to.use = 48*1024*1024*1024 
+memory.to.use = 16*1024*1024*1024 
 
 ## Number of bins
-nb = 24
+nb = 12
 
 ## Temperature smoothing
 smoothing = 0
