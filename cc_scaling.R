@@ -231,7 +231,7 @@ for (i in 1:n.chunks) {
       precip[,,k] = lonflip(precip[,,k], lon0)$x
     } ## i
   }
-  if (fliplat) {
+  if (fliplat & count > 1) {
     for (k in 1:nb) {
       temp  [,,k] = invertlat(temp  [,,k])
       precip[,,k] = invertlat(precip[,,k])
