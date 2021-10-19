@@ -1,24 +1,45 @@
 #!/usr/bin/env -S Rscript --vanilla
 
 ## Load libraries
+library(argparser)
 library(ncdf4)
 
 ## Load source
 source("src/invertlat.R")
 source("src/lonflip.R")
 
+## Argument parser
+parser = arg_parser("Compute climatology", hide.opts = TRUE)
+
+## Optional arguments
+parser = add_argument(parser, "--varid", 
+                      "Variable name to read", nargs = 1)
+parser = add_argument(parser, "--quantiles", 
+                      "Quantiles to compute",
+                      type = "numeric", nargs = Inf)
+parser = add_argument(parser, "--memory", 
+                      "Maximum memory to use (in MB)",
+                      default = 4096, type = "integer", nargs = 1)
+
 ## Parse arguments
-args = commandArgs(TRUE)
-nargs = length(args)
-infiles = as.character(args[1:(nargs-1)])
-outfile = as.character(args[nargs])
-
-## Quantiles to compute
-probs = c(0.005,0.01,0.02,0.025,0.05,0.10,0.25,0.50,
-          0.75,0.90,0.95,0.975,0.98,0.99,0.995)
-
-## Max memory to use: Defaults to 16GB
-memory.to.use = 16*1024 
+argv = commandArgs(TRUE)
+if (any(substr(argv, 1, 1) == "-")) {
+  nargs = min(which(substr(argv, 1, 1) == "-")) - 1
+} else {
+  nargs = length(argv)
+}
+infiles = as.character(argv[1:(nargs-1)])
+outfile = as.character(argv[nargs])
+if (any(substr(argv, 1, 1) == "-")) {
+  argv = argv[(nargs + 1):length(argv)]
+} else {
+  argv = character(0)
+}
+argv = parse_args(parser, argv)
+if (is.na(argv$quantiles)) {
+  argv$quantiles = c(0.005,0.01,0.02,0.025,0.05,0.10,0.25,0.50,
+                     0.75,0.90,0.95,0.975,0.98,0.99,0.995)
+}
 
 ## Read dimensions
 nc  = nc_open(infiles[1])
@@ -26,11 +47,13 @@ lon = nc$dim$longitude$vals
 lat = nc$dim$latitude$vals
 calendar   = nc$dim$time$calendar
 time.units = nc$dim$time$units
-varname    = nc$var[[1]]$longname
-units      = nc$var[[1]]$units
+if (is.na(argv$varid))
+  argv$varid = names(nc$var)[1]
+varname = nc$var[[argv$varid]]$longname
+units   = nc$var[[argv$varid]]$units
 nc_close(nc)
 
-np = length(probs)
+np = length(argv$quantiles)
 nx = length(lon)
 ny = length(lat)
 
@@ -47,7 +70,7 @@ nt = length(time)
 
 ## Split into chunks
 row.size   = nx*nt*8/1024/1024
-chunk.size = floor(memory.to.use/row.size/2)
+chunk.size = floor(argv$memory/row.size/2)
 n.chunks   = ceiling(ny/chunk.size)
 chunks = data.frame(
   start = seq(0, n.chunks - 1, 1)*chunk.size + 1,
@@ -59,7 +82,7 @@ chunks$count[n.chunks] = ny - (n.chunks - 1)*chunk.size
 means     = array(NA, c(nx,ny), list(longitude = lon, latitude = lat))
 sds       = array(NA, c(nx,ny), list(longitude = lon, latitude = lat))
 quantiles = array(NA, c(nx,ny,np), list(longitude = lon, latitude = lat,
-                                        quantile = probs))
+                                        quantile = argv$quantiles))
 
 ## Loop over chunks
 for (i in 1:n.chunks) {
@@ -86,7 +109,8 @@ for (i in 1:n.chunks) {
 
     ## Load data
     mask = seq(t1, t1 + ntj - 1, 1)
-    chunk[,,mask] = ncvar_get(nc, start = c(1,start,1), count = c(nx,count,ntj))
+    chunk[,,mask] = 
+      ncvar_get(nc, argv$varid, start = c(1,start,1), count = c(nx,count,ntj))
 
     ## Close connection
     nc_close(nc)
@@ -100,7 +124,7 @@ for (i in 1:n.chunks) {
   mask = seq(start, start + count - 1, 1)
   means    [,mask] = apply(chunk, c(1,2), mean, na.rm = TRUE)
   sds      [,mask] = apply(chunk, c(1,2), sd  , na.rm = TRUE)
-  buffer = apply(chunk, c(1,2), quantile, probs = probs , na.rm = TRUE)
+  buffer = apply(chunk, c(1,2), quantile, probs = argv$quantiles , na.rm = TRUE)
   if (np > 1) {
     for (j in 1:np)
       quantiles[,mask,j] = buffer[j,,]
@@ -143,7 +167,7 @@ lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
 lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude")
 time.dim = ncdim_def("time", time.units, climatology.time,
                      unlim = TRUE, calendar = calendar, longname = "Time")
-prob.dim = ncdim_def("probability", "", probs, longname = "Probability")
+prob.dim = ncdim_def("probability", "", argv$quantiles, longname = "Probability")
 nv.dim   = ncdim_def("bounds", "", 1:2, create_dimvar = FALSE)
 
 ## Define variables
