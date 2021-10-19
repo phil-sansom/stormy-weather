@@ -18,7 +18,7 @@ probs = c(0.005,0.01,0.02,0.025,0.05,0.10,0.25,0.50,
           0.75,0.90,0.95,0.975,0.98,0.99,0.995)
 
 ## Max memory to use: Defaults to 16GB
-memory.to.use = 16*1024*1024*1024 
+memory.to.use = 16*1024 
 
 ## Read dimensions
 nc  = nc_open(infiles[1])
@@ -46,9 +46,9 @@ for (file in infiles) {
 nt = length(time)
 
 ## Split into chunks
-total.size = as.double(nx)*as.double(ny)*as.double(nt)*8
-n.chunks = ceiling(total.size/memory.to.use)
-chunk.size = ceiling(ny/n.chunks)
+row.size   = nx*nt*8/1024/1024
+chunk.size = floor(memory.to.use/row.size/2)
+n.chunks   = ceiling(ny/chunk.size)
 chunks = data.frame(
   start = seq(0, n.chunks - 1, 1)*chunk.size + 1,
   count = rep(chunk.size, n.chunks)
