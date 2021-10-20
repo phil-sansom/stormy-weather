@@ -1,46 +1,47 @@
 #!/usr/bin/env -S Rscript --vanilla
 
 ## Load libraries
-library(argparser)
+library(optparse)
 library(ncdf4)
 
 ## Load source
 source("src/invertlat.R")
 source("src/lonflip.R")
 
-## Argument parser
-parser = arg_parser("Clausius-Clapeyron scaling calculations", hide.opts = TRUE)
-
-## Positional arguments
-parser = add_argument(parser, "tfiles", "List of temperature files to read")
-parser = add_argument(parser, "pfiles", "List of precipitation files to read")
-parser = add_argument(parser, "outfile", "Output file")
-
 ## Optional arguments
-parser = add_argument(parser, "--quantile", 
-                      "Quantile of precipitation to compute",
-                      default = 0.99, type = "numeric", nargs = 1)
-parser = add_argument(parser, "--smoothing", 
-                      "Number of time steps to smooth temperatures over",
-                      default = 0, type = "integer", nargs = 1)
-parser = add_argument(parser, "--threshold", 
-                      "Threshold for wet days",
-                      default = 0, type = "numeric", nargs = 1)
-parser = add_argument(parser, "--bins", 
-                      "Number of equal size bins to use",
-                      default = 24, type = "integer", nargs = 1)
-parser = add_argument(parser, "--memory", 
-                      "Maximum memory to use (in MB)",
-                      default = 4096, type = "integer", nargs = 1)
+option_list = list(
+  make_option(c("--quantile","-q"), action = "store", type = "double",
+              help = "Quantile of precipitation to compute [default: 0.99]",
+              default = 0.99),
+  make_option(c("--smoothing","-s"), action = "store", type = "integer",
+              help = "Number of time steps to smooth temperatures over [default: 0]",
+              default = 0),
+  make_option(c("--threshold","-t"), action = "store", type = "double",
+              help = "Threshold for wet days (mm) [default: 0]",
+              default = 0),
+  make_option(c("--bins","-b"), action = "store", type = "integer",
+              help = "Number of equal size bins to use [default: 24]",
+              default = 24),
+  make_option(c("--memory","-m"), action = "store", type = "integer",
+              help = "Maximum memory to use (in MB) [default: 4096]",
+              default = 4096)
+)
+
+## Argument parser
+parser = OptionParser(usage = "Usage: %prog [OPTION]... TEMP_FILES PRECIP_FILES OUTFILE",
+                      option_list = option_list,
+                      description = "Clausius-Clapeyron scaling calculations.\n\nOperands:\n\tTEMP_FILES\n\t\tList of temperature files to read\n\tPRECIP_FILES\n\t\tList of precipitation files to read\n\tOUTFILE\n\t\tFile to write output to")
 
 ## Parser arguments
-argv = parse_args(parser)
-nb = argv$bins
-smoothing = argv$smoothing
+argv = parse_args(parser, positional_arguments = 3)
+opts = argv$options
+args = argv$args
+nb = opts$bins
+smoothing = opts$smoothing
 
 ## Read file lists
-tlist = scan(argv$tfiles, character(), -1, quiet = TRUE)
-plist = scan(argv$pfiles, character(), -1, quiet = TRUE)
+tlist = scan(args[1], character(), -1, quiet = TRUE)
+plist = scan(args[2], character(), -1, quiet = TRUE)
 n.files = length(tlist)
 
 ## Read dimensions
@@ -82,7 +83,7 @@ dt = time[2] - time[1]
 
 ## Split into chunks
 row.size   = nx*nt*8/1024/1024
-chunk.size = floor(argv$memory/row.size/2)
+chunk.size = floor(opts$memory/row.size/2)
 n.chunks   = ceiling(ny/chunk.size)
 chunks = data.frame(
   start = seq(0, n.chunks - 1, 1)*chunk.size + 1,
@@ -113,7 +114,7 @@ clim.var  = ncvar_def("climatology_bounds", "", list(nv.dim,time.dim),
                       prec = "double")
 
 ## Create netCDF file
-nco = nc_create(argv$outfile, list(clim.var, temp.var, precip.var))
+nco = nc_create(args[3], list(clim.var, temp.var, precip.var))
 
 ## Write description
 ncatt_put(nco, 0, "Conventions", "CF-1.8", prec = "text")
@@ -164,7 +165,7 @@ for (i in 1:n.chunks) {
     buffer = ncvar_get(ncp, start = c(1,start,1), count = c(nx,count,ntj))
     mask1 = which(buffer < 0)
     buffer[mask1] = 0
-    mask1 = which(buffer < argv$threshold)
+    mask1 = which(buffer < opts$threshold)
     buffer[mask1] = NA
     precip0[,,mask] = buffer
 
@@ -183,7 +184,7 @@ for (i in 1:n.chunks) {
   # ## Smooth temp data
   if (smoothing > 0) {
     print(paste("Smoothing chunk",i,"of",n.chunks))
-    smoothing = argv$smoothing
+    smoothing = opts$smoothing
     nn = 2*smoothing + 1
     buffer = array(0, c(nx,count,nn))
     for (k in 1:nt) {
@@ -215,7 +216,7 @@ for (i in 1:n.chunks) {
       for (m in 1:nb) {
         slice = (breaks[m] + 1):breaks[m + 1]
         temp  [k,l,m] = mean(temp1[slice], na.rm = TRUE)
-        precip[k,l,m] = quantile(precip1[slice], probs = argv$quantile, 
+        precip[k,l,m] = quantile(precip1[slice], probs = opts$quantile, 
                                  na.rm = TRUE)
       } ## m
     } ## l
