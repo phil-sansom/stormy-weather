@@ -110,11 +110,14 @@ temp.var  = ncvar_def("temp", "K", list(lon.dim,lat.dim,bin.dim,time.dim),
 precip.var = ncvar_def("precip", "mm", list(lon.dim,lat.dim,bin.dim,time.dim),  
                        longname = "Precipitation", prec = "double",
                        compression = 5)
+binsize.var = ncvar_def("binsize", "", list(lon.dim,lat.dim,bin.dim,time.dim),
+                        longname = "Bin size", prec = "integer",
+                        compression = 5)
 clim.var  = ncvar_def("climatology_bounds", "", list(nv.dim,time.dim),
                       prec = "double")
 
 ## Create netCDF file
-nco = nc_create(args[3], list(clim.var, temp.var, precip.var))
+nco = nc_create(args[3], list(clim.var, temp.var, precip.var, binsize.var))
 
 ## Write description
 ncatt_put(nco, 0, "Conventions", "CF-1.8", prec = "text")
@@ -140,6 +143,7 @@ for (i in 1:n.chunks) {
   precip0 = array(NA, c(nx,count,nt))
   temp    = array(NA, c(nx,count,nb))
   precip  = array(NA, c(nx,count,nb))
+  binsize = array(NA, c(nx,count,nb))
   
   ## Initialize time counter
   t1 = 1
@@ -219,6 +223,7 @@ for (i in 1:n.chunks) {
         precip[k,l,m] = quantile(precip1[slice], probs = opts$quantile, 
                                  na.rm = TRUE)
       } ## m
+      binsize[k,l,] = diff(breaks)
     } ## l
   } ## k
   rm(precip0,temp0,temp1,precip1,mask,slice)
@@ -228,14 +233,16 @@ for (i in 1:n.chunks) {
   precip = 1000*precip
   if (fliplon) {
     for (k in 1:nb) {
-      temp  [,,k] = lonflip(temp  [,,k], lon0)$x
-      precip[,,k] = lonflip(precip[,,k], lon0)$x
+      temp   [,,k] = lonflip(temp   [,,k], lon0)$x
+      precip [,,k] = lonflip(precip [,,k], lon0)$x
+      binsize[,,k] = lonflip(binsize[,,k], lon0)$x
     } ## i
   }
   if (fliplat & count > 1) {
     for (k in 1:nb) {
-      temp  [,,k] = invertlat(temp  [,,k])
-      precip[,,k] = invertlat(precip[,,k])
+      temp   [,,k] = invertlat(temp   [,,k])
+      precip [,,k] = invertlat(precip [,,k])
+      binsize[,,k] = invertlat(binsize[,,k])
     } ## i
   }
   
@@ -246,10 +253,14 @@ for (i in 1:n.chunks) {
               start = c(1,ny - start - count + 2,1,1), count = c(nx,count,nb,1))
     ncvar_put(nco, "precip", precip, 
               start = c(1,ny - start - count + 2,1,1), count = c(nx,count,nb,1))
+    ncvar_put(nco, "binsize", binsize, 
+              start = c(1,ny - start - count + 2,1,1), count = c(nx,count,nb,1))
   } else {
     ncvar_put(nco, "temp", temp, 
               start = c(1,start,1,1), count = c(nx,count,nb,1))
     ncvar_put(nco, "precip", precip, 
+              start = c(1,start,1,1), count = c(nx,count,nb,1))
+    ncvar_put(nco, "binsize", binsize, 
               start = c(1,start,1,1), count = c(nx,count,nb,1))
   }
   
