@@ -22,6 +22,9 @@ option_list = list(
   make_option(c("--bins","-b"), action = "store", type = "integer",
               help = "Number of equal size bins to use [default: 24]",
               default = 24),
+  make_option(c("--compression","-c"), action = "store", type = "integer",
+              help = "Compression level to use (0-9) [default: 5]",
+              default = 5),
   make_option(c("--memory","-m"), action = "store", type = "integer",
               help = "Maximum memory to use (in MB)")
 )
@@ -37,6 +40,8 @@ opts = argv$options
 args = argv$args
 nb = opts$bins
 smoothing = opts$smoothing
+if (opts$compression == 0)
+  opts$compression = NA
 
 ## Read file lists
 tlist = scan(args[1], character(), -1, quiet = TRUE)
@@ -49,8 +54,6 @@ lon0 = nc$dim$longitude$vals
 lat0 = nc$dim$latitude$vals
 calendar   = nc$dim$time$calendar
 time.units = nc$dim$time$units
-varname    = nc$var[[1]]$longname
-units      = nc$var[[1]]$units
 nc_close(nc)
 
 nx = length(lon0)
@@ -105,18 +108,18 @@ lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude")
 bin.dim  = ncdim_def("bin", "number", 1:nb, longname = "Bin")
 time.dim = ncdim_def("time", time.units, (time[1] + time[nt] + dt)/2,
                      unlim = TRUE, calendar = calendar, longname = "Time")
-nv.dim = ncdim_def("bounds", "", 1:2, create_dimvar = FALSE)
+nv.dim   = ncdim_def("bounds", "", 1:2, create_dimvar = FALSE)
 
 ## Define variables
 temp.var  = ncvar_def("temp", "K", list(lon.dim,lat.dim,bin.dim,time.dim),  
                       longname = "Temperature", prec = "double",
-                      compression = 5)
+                      compression = opts$compression)
 precip.var = ncvar_def("precip", "mm", list(lon.dim,lat.dim,bin.dim,time.dim),  
                        longname = "Precipitation", prec = "double",
-                       compression = 5)
+                       compression = opts$compression)
 binsize.var = ncvar_def("binsize", "", list(lon.dim,lat.dim,bin.dim,time.dim),
                         longname = "Bin size", prec = "integer",
-                        compression = 5)
+                        compression = opts$compression)
 clim.var  = ncvar_def("climatology_bounds", "", list(nv.dim,time.dim),
                       prec = "double")
 
