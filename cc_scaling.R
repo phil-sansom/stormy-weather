@@ -19,7 +19,7 @@ option_list = list(
   make_option(c("--threshold","-t"), action = "store", type = "double",
               help = "Threshold for wet days (mm) [default: 0]",
               default = 0),
-  make_option(c("--bins","-b"), action = "store", type = "integer",
+  make_option(c("--nbins","-n"), action = "store", type = "integer",
               help = "Number of equal size bins to use [default: 24]",
               default = 24),
   make_option(c("--compression","-c"), action = "store", type = "integer",
@@ -38,7 +38,7 @@ parser = OptionParser(usage = "Usage: %prog [OPTION]... TEMP_FILES PRECIP_FILES 
 argv = parse_args(parser, positional_arguments = 3)
 opts = argv$options
 args = argv$args
-nb = opts$bins
+nb = opts$nbins
 smoothing = opts$smoothing
 if (opts$compression == 0)
   opts$compression = NA
