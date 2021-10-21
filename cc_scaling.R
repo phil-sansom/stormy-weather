@@ -23,8 +23,7 @@ option_list = list(
               help = "Number of equal size bins to use [default: 24]",
               default = 24),
   make_option(c("--memory","-m"), action = "store", type = "integer",
-              help = "Maximum memory to use (in MB) [default: 4096]",
-              default = 4096)
+              help = "Maximum memory to use (in MB)")
 )
 
 ## Argument parser
@@ -82,9 +81,14 @@ nt = length(time)
 dt = time[2] - time[1]
 
 ## Split into chunks
-row.size   = nx*nt*8/1024/1024
-chunk.size = floor(opts$memory/row.size/2)
-n.chunks   = ceiling(ny/chunk.size)
+if (exists("memory", opts)) {
+  row.size   = nx*nt*8/1024/1024
+  chunk.size = floor(opts$memory/row.size/2)
+  n.chunks   = ceiling(ny/chunk.size)
+} else {
+  chunk.size = ny
+  n.chunks = 1
+}
 chunks = data.frame(
   start = seq(0, n.chunks - 1, 1)*chunk.size + 1,
   count = rep(chunk.size, n.chunks)
