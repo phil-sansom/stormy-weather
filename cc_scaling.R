@@ -25,6 +25,8 @@ option_list = list(
   make_option(c("--compression","-c"), action = "store", type = "integer",
               help = "Compression level to use (0-9) [default: 5]",
               default = 5),
+  make_option(c("--binsize","-b"), action = "store", type = "integer",
+              help = "Minimum number of obs in each bin (overrides nbins)"),
   make_option(c("--memory","-m"), action = "store", type = "integer",
               help = "Maximum memory to use (in MB)")
 )
@@ -38,7 +40,6 @@ parser = OptionParser(usage = "Usage: %prog [OPTION]... TEMP_FILES PRECIP_FILES 
 argv = parse_args(parser, positional_arguments = 3)
 opts = argv$options
 args = argv$args
-nb = opts$nbins
 smoothing = opts$smoothing
 if (opts$compression == 0)
   opts$compression = NA
@@ -82,6 +83,11 @@ for (file in tlist) {
 } ## file
 nt = length(time)
 dt = time[2] - time[1]
+if (exists("binsize", opts)) {
+  nb = floor((nt - 2*smoothing)/opts$binsize)
+} else {
+  nb = opts$nbins
+}
 
 ## Split into chunks
 if (exists("memory", opts)) {
@@ -111,20 +117,30 @@ time.dim = ncdim_def("time", time.units, (time[1] + time[nt] + dt)/2,
 nv.dim   = ncdim_def("bounds", "", 1:2, create_dimvar = FALSE)
 
 ## Define variables
-temp.var  = ncvar_def("temp", "K", list(lon.dim,lat.dim,bin.dim,time.dim),  
-                      longname = "Temperature", prec = "double",
-                      compression = opts$compression)
-precip.var = ncvar_def("precip", "mm", list(lon.dim,lat.dim,bin.dim,time.dim),  
-                       longname = "Precipitation", prec = "double",
-                       compression = opts$compression)
+temp.var    = ncvar_def("temp", "K", list(lon.dim,lat.dim,bin.dim,time.dim),
+                        missval = 9.9692099683868690e+36,
+                        longname = "Temperature", prec = "double",
+                        compression = opts$compression)
+precip.var  = ncvar_def("precip", "mm", list(lon.dim,lat.dim,bin.dim,time.dim),
+                        missval = 9.9692099683868690e+36,
+                        longname = "Precipitation", prec = "double",
+                        compression = opts$compression)
 binsize.var = ncvar_def("binsize", "", list(lon.dim,lat.dim,bin.dim,time.dim),
+                        missval = -2147483647,
                         longname = "Bin size", prec = "integer",
                         compression = opts$compression)
-clim.var  = ncvar_def("climatology_bounds", "", list(nv.dim,time.dim),
-                      prec = "double")
+clim.var    = ncvar_def("climatology_bounds", "", list(nv.dim,time.dim),
+                        prec = "double")
+vars = list(clim.var, temp.var, precip.var, binsize.var)
+if (exists("nbins", opts)) {
+  nbins.var = ncvar_def("nbins", "", list(lon.dim,lat.dim,time.dim),
+                        longname = "Number of bins", prec = "integer",
+                        compression = opts$compression)
+  vars = c(vars,list(nbins.var))
+}
 
 ## Create netCDF file
-nco = nc_create(args[3], list(clim.var, temp.var, precip.var, binsize.var))
+nco = nc_create(args[3], vars)
 
 ## Write description
 ncatt_put(nco, 0, "Conventions", "CF-1.8", prec = "text")
@@ -151,6 +167,7 @@ for (i in 1:n.chunks) {
   temp    = array(NA, c(nx,count,nb))
   precip  = array(NA, c(nx,count,nb))
   binsize = array(NA, c(nx,count,nb))
+  nbins   = array(NA, c(nx,count))
   
   ## Initialize time counter
   t1 = 1
@@ -223,14 +240,22 @@ for (i in 1:n.chunks) {
       mask    = !is.na(precip1)
       temp1   = temp1  [mask]
       precip1 = precip1[mask]
-      breaks  = round(seq(0, length(precip1), length.out = nb + 1))
-      for (m in 1:nb) {
-        slice = (breaks[m] + 1):breaks[m + 1]
-        temp  [k,l,m] = mean(temp1[slice], na.rm = TRUE)
-        precip[k,l,m] = quantile(precip1[slice], probs = opts$quantile, 
-                                 na.rm = TRUE)
-      } ## m
-      binsize[k,l,] = diff(breaks)
+      if (exists("binsize", opts)) {
+        nbkl = floor(length(precip1)/opts$binsize)
+      } else {
+        nbkl = nb
+      }
+      nbins[k,l] = nbkl
+      if (nbkl > 0) {
+        breaks = round(seq(0, length(precip1), length.out = nbkl + 1))
+        for (m in 1:nbkl) {
+          slice = (breaks[m] + 1):breaks[m + 1]
+          temp  [k,l,m] = mean(temp1[slice], na.rm = TRUE)
+          precip[k,l,m] = quantile(precip1[slice], probs = opts$quantile, 
+                                   na.rm = TRUE)
+        } ## m
+        binsize[k,l,1:nbkl] = diff(breaks)
+      } ## nbkl > 0
     } ## l
   } ## k
   rm(precip0,temp0,temp1,precip1,mask,slice)
@@ -244,6 +269,7 @@ for (i in 1:n.chunks) {
       precip [,,k] = lonflip(precip [,,k], lon0)$x
       binsize[,,k] = lonflip(binsize[,,k], lon0)$x
     } ## i
+    nbins = lonflip(nbins, lon0)$x
   }
   if (fliplat & count > 1) {
     for (k in 1:nb) {
@@ -251,6 +277,7 @@ for (i in 1:n.chunks) {
       precip [,,k] = invertlat(precip [,,k])
       binsize[,,k] = invertlat(binsize[,,k])
     } ## i
+    nbins = invertlat(nbins)
   }
   
   ## Write data
@@ -262,6 +289,9 @@ for (i in 1:n.chunks) {
               start = c(1,ny - start - count + 2,1,1), count = c(nx,count,nb,1))
     ncvar_put(nco, "binsize", binsize, 
               start = c(1,ny - start - count + 2,1,1), count = c(nx,count,nb,1))
+    if (exists("nbins", opts))
+      ncvar_put(nco, "nbins", nbins, 
+                start = c(1,ny - start - count + 2,1), count = c(nx,count,1))
   } else {
     ncvar_put(nco, "temp", temp, 
               start = c(1,start,1,1), count = c(nx,count,nb,1))
@@ -269,6 +299,9 @@ for (i in 1:n.chunks) {
               start = c(1,start,1,1), count = c(nx,count,nb,1))
     ncvar_put(nco, "binsize", binsize, 
               start = c(1,start,1,1), count = c(nx,count,nb,1))
+    if (exists("nbins", opts))
+      ncvar_put(nco, "nbins", nbins, 
+                start = c(1,start,1), count = c(nx,count,1))
   }
   
 } ## i
