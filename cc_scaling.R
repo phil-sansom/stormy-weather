@@ -47,14 +47,15 @@ if (opts$compression == 0)
 ## Read file lists
 tlist = scan(args[1], character(), -1, quiet = TRUE)
 plist = scan(args[2], character(), -1, quiet = TRUE)
-n.files = length(tlist)
+n.files = length(plist)
 
 ## Read dimensions
-nc  = nc_open(tlist[1])
+nc = nc_open(plist[1])
 lon0 = nc$dim$longitude$vals
 lat0 = nc$dim$latitude$vals
 calendar   = nc$dim$time$calendar
 time.units = nc$dim$time$units
+precip.units = nc$var[[1]]$units
 nc_close(nc)
 
 nx = length(lon0)
@@ -74,7 +75,7 @@ lat = if (fliplat) rev(lat0) else lat0
 
 ## Read times
 time = numeric()
-for (file in tlist) {
+for (file in plist) {
   
   nc   = nc_open(file)
   time = c(time,nc$dim$time$vals)
@@ -155,6 +156,24 @@ ncvar_put(nco, "climatology_bounds", c(time[1],time[nt] + dt))
 ncatt_put(nco, "time"  , "climatology" , "climatology_bounds", prec = "text")
 ncatt_put(nco, "temp"  , "cell_methods", "time: mean"        , prec = "text")
 ncatt_put(nco, "precip", "cell_methods", "time: quantile"    , prec = "text")
+
+## Write parameters
+ncatt_put(nco, 0, "quantile" , opts$quantile , prec = "double" )
+ncatt_put(nco, 0, "smoothing", opts$smoothing, prec = "integer")
+ncatt_put(nco, 0, "threshold", opts$threshold, prec = "double" )
+if (exists("binsize", opts)) {
+  ncatt_put(nco, 0, "binsize", opts$binsize, prec = "integer")
+} else {
+  ncatt_put(nco, 0, "nbins"  , opts$nbins  , prec = "integer")
+}
+
+## Transform threshold
+if (! precip.units %in% c("mm","cm","m"))
+  warning("Precip units not recognised (mm,cm,m), specify threshold in native units")
+if (precip.units == "cm")
+  opts$threshold = opts$threshold/10
+if (precip.units == "m")
+  opts$threshold = opts$threshold/1000
 
 ## Loop over chunks
 for (i in 1:n.chunks) {
@@ -262,7 +281,10 @@ for (i in 1:n.chunks) {
   gc()
   
   ## Transform data
-  precip = 1000*precip
+  if (precip.units == "cm")
+    precip = 10*precip
+  if (precip.units == "m")
+    precip = 1000*precip
   if (fliplon) {
     for (k in 1:nb) {
       temp   [,,k] = lonflip(temp   [,,k], lon0)$x
