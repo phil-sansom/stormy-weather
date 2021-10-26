@@ -4,10 +4,6 @@
 library(optparse)
 library(ncdf4)
 
-## Load source
-source("src/invertlat.R")
-source("src/lonflip.R")
-
 ## Optional arguments
 option_list = list(
   make_option("--start", action = "store", type = "integer",
@@ -61,8 +57,8 @@ if (exists("next", opts)) {
 }
 
 ## Read dimensions
-lon0  = nci$dim$longitude$vals
-lat0  = nci$dim$latitude$vals
+lon  = nci$dim$longitude$vals
+lat  = nci$dim$latitude$vals
 time0 = nci$dim$time$vals
 time.calendar = nci$dim$time$calendar
 time.units    = nci$dim$time$units
@@ -70,22 +66,10 @@ var.name      = nci$var[[1]]$name
 var.units     = nci$var[[1]]$units
 var.longname  = nci$var[[1]]$longname
 
-nx  = length(lon0)
-ny  = length(lat0)
+nx  = length(lon)
+ny  = length(lat)
 nt0 = length(time0)
 nm  = length(opts$mask)
-
-## Determine if we need to transform dimensions
-fliplon = any(lon0 >= 180)
-fliplat = lat0[1] > lat0[2]
-
-## Transform dimensions
-if (fliplon) {
-  lon = lonflip(matrix(0, length(lon0), length(lat0)), lon0)$lon 
-} else {
-  lon = lon0
-}
-lat = if (fliplat) rev(lat0) else lat0
 
 time.mask = seq(opts$start, nt0, opts$step)
 time = time0[time.mask]
