@@ -22,6 +22,8 @@ option_list = list(
               help = "Previous input file"),
   make_option("--next", action = "store", type = "character",
               dest = "nextfile", help = "Next input file"),
+  make_option("--varname", action = "store", type = "character",
+              help = "Variable to read"),
   make_option("--compression", action = "store", type = "integer",
               help = "Compression level to use (0-9) [default: 5]",
               default = 5),
@@ -42,41 +44,37 @@ args = argv$args
 opts$mask = as.numeric(strsplit(opts$mask, ",")[[1]])
 if (opts$compression == 0)
   opts$compression = NA
+  
 infile  = args[1]
 outfile = args[2]
 
 ## Open connections
 nci = nc_open(infile)
-if (exists("previous", opts)) {
+if (is.na(opts$varname))
+  opts$varname = names(nci$var)[[1]]
+if (!is.na(opts$previous)) {
   ncp = nc_open(opts$previous)
   ntp = ncp$dim$time$len
 }
-if (exists("nextfile", opts)) {
+if (!is.n(opts$previous)) {
   ncn = nc_open(opts$nextfile)
   ntn = ncn$dim$time$len
 }
 
 ## Read dimensions
-lon  = nci$dim$longitude$vals
-lat  = nci$dim$latitude$vals
 time0 = nci$dim$time$vals
-time.calendar = nci$dim$time$calendar
-time.units    = nci$dim$time$units
-var.name      = nci$var[[1]]$name
-var.units     = nci$var[[1]]$units
-var.longname  = nci$var[[1]]$longname
 
-nx  = length(lon)
-ny  = length(lat)
-nt0 = length(time0)
+nx  = nci$dim$longitude$len
+ny  = nci$dim$latitude$len
+nt0 = nci$dim$time$len
 nm  = length(opts$mask)
 
 time.mask = seq(opts$start, nt0, opts$step)
 time = time0[time.mask]
 nt = length(time.mask)
-if (time.mask[1] + opts$mask[1] < 1 & !exists("previous", opts))
+if (time.mask[1] + opts$mask[1] < 1 & is.na(opts$previous))
   warning("Specify preceding file (--previous) or first time steps will not be computed")
-if (nt < time.mask[nt] + opts$mask[nm] & !exists("nextfile", opts))
+if (nt < time.mask[nt] + opts$mask[nm] & is.na(opts$nextfile))
   warning("Specify succeeding file (--next) or final time steps will not be computed")
 if (2*nt < nm)
   stop("Length of mask exceeds twice the number of time steps")
@@ -100,10 +98,10 @@ for (t in 1:nt) {
   start = tt + mask.min
   if (start <= 0) {
     countp  = 1 - start
-    if (exists("previous", opts)) {
+    if (!is.na(opts$previous)) {
       startp  = ntp + start - 1
       buffer[,,1:countp] = 
-        ncvar_get(ncp, var.name, start = c(1,1,startp), count = c(nx,ny,countp))
+        ncvar_get(ncp, opts$varname, start = c(1,1,startp), count = c(nx,ny,countp))
     }
     start = 1
     count = nm - countp
@@ -111,14 +109,14 @@ for (t in 1:nt) {
   if (nt0 < tt + count) {
     startn = 1
     countn = tt + count - nt0 - 1
-    if (exists("nextfile", opts)) {
+    if (!is.na(opts$nextfile)) {
       buffer[,,(nm - countn + 1):nm] = 
-        ncvar_get(ncp, var.name, start = c(1,1,startn), count = c(nx,ny,countn))
+        ncvar_get(ncp, opts$varname, start = c(1,1,startn), count = c(nx,ny,countn))
     }
     count = count - countn
   }
   buffer[,,(countp+1):(nm - countn)] = 
-    ncvar_get(nci, var.name, start = c(1,1,start), count = c(nx,ny,count))
+    ncvar_get(nci, opts$varname, start = c(1,1,start), count = c(nx,ny,count))
   output[,,t] = switch(opts$action,
                        min  = apply(buffer, c(1,2), min , na.rm = TRUE),
                        max  = apply(buffer, c(1,2), max , na.rm = TRUE),
@@ -135,10 +133,12 @@ time.dim = ncdim_def("time", nci$dim$time$units, time, unlim = TRUE,
 
 ## Define variables
 if (opts$pack) {
-  data.var = ncvar_def(var.name, var.units, list(lon.dim,lat.dim,time.dim),
+  data.var = ncvar_def(opts$varname, nci$var[[opts$varname]]$units, 
+                       list(lon.dim,lat.dim,time.dim),
                        missval = -32767, prec = "short")
 } else {
-  data.var = ncvar_def(var.name, var.units, list(lon.dim,lat.dim,time.dim),
+  data.var = ncvar_def(opts$varname, nci$var[[opts$varname]]$units, 
+                       list(lon.dim,lat.dim,time.dim),
                        missval = 9.9692099683868690e+36, prec = "double",
                        compression = opts$compression)
 }
@@ -163,15 +163,15 @@ time.attributes = ncatt_get(nci, "time")
 if (length(time.attributes) > 0)
   for (i in 1:length(time.attributes))
     ncatt_put(nco, "time", names(time.attributes)[i], time.attributes[[i]])
-var.attributes = ncatt_get(nci, var.name)
+var.attributes = ncatt_get(nci, opts$varname)
 var.attributes = var.attributes[!names(var.attributes) %in% 
                                   c("_FillValue","_NoFill","missing_value",
                                     "valid_min","valid_max","valid_range",
                                     "scale_factor","add_offset")]
 if (length(var.attributes) > 0)
   for (i in 1:length(var.attributes))
-    ncatt_put(nco, var.name, names(var.attributes)[i], var.attributes[[i]])
-ncatt_put(nco, var.name, "missing_value", data.var$missval)
+    ncatt_put(nco, opts$varname, names(var.attributes)[i], var.attributes[[i]])
+ncatt_put(nco, opts$varname, "missing_value", data.var$missval)
 
 ## Write data
 if (opts$pack) {
@@ -180,17 +180,17 @@ if (opts$pack) {
   add.offset = 
     ((2^(n - 1) - 1)*(max(output) - min(output)) - max(output))/(2^n - 3)
   packed = round((output - add.offset)/scale.factor)
-  ncvar_put(nco, var.name, packed)
-  ncatt_put(nco, var.name, "scale_factor", scale.factor, prec = "double")
-  ncatt_put(nco, var.name, "add_offset"  , add.offset  , prec = "double")
+  ncvar_put(nco, opts$varname, packed)
+  ncatt_put(nco, opts$varname, "scale_factor", scale.factor, prec = "double")
+  ncatt_put(nco, opts$varname, "add_offset"  , add.offset  , prec = "double")
 } else {
-  ncvar_put(nco, var.name, output)
+  ncvar_put(nco, opts$varname, output)
 }
 
 ## Close connections
 nc_close(nci)
 nc_close(nco)
-if (exists("previous", opts))
+if (!is.na(opts$previous))
   nc_close(ncp)
-if (exists("next", opts))
+if (!is.na(opts$nextfile))
   nc_close(ncn)
