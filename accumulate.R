@@ -128,33 +128,50 @@ for (t in 1:nt) {
 } ## t
 
 ## Define dimensions
-lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
-lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude" )
-time.dim = ncdim_def("time", time.units, time,
-                     unlim = TRUE, calendar = time.calendar, longname = "Time")
+lon.dim  = ncdim_def("longitude", nci$dim$longitude$units, nci$dim$longitude$vals)
+lat.dim  = ncdim_def("latitude" , nci$dim$latitude$units, nci$dim$latitude$vals)
+time.dim = ncdim_def("time", nci$dim$time$units, time, unlim = TRUE, 
+                     calendar = nci$dim$time$calendar)
 
 ## Define variables
 if (opts$pack) {
   data.var = ncvar_def(var.name, var.units, list(lon.dim,lat.dim,time.dim),
-                       missval = -32767, 
-                       longname = var.longname, prec = "short")
+                       missval = -32767, prec = "short")
 } else {
   data.var = ncvar_def(var.name, var.units, list(lon.dim,lat.dim,time.dim),
-                       missval = 9.9692099683868690e+36,
-                       longname = var.longname, prec = "double",
+                       missval = 9.9692099683868690e+36, prec = "double",
                        compression = opts$compression)
 }
   
 ## Create netCDF file
 nco = nc_create(outfile, data.var)
 
-## Write description
-ncatt_put(nco, 0, "Conventions", "CF-1.8", prec = "text")
-
-## Write standard names
-ncatt_put(nco, "longitude", "standard_name", "longitude", prec = "text")
-ncatt_put(nco, "latitude" , "standard_name", "latitude" , prec = "text")
-ncatt_put(nco, "time"     , "standard_name", "time"     , prec = "text")
+## Write attributes
+global.attributes = ncatt_get(nci, 0)
+if (length(global.attributes) > 0)
+  for (i in 1:length(global.attributes))
+    ncatt_put(nco, 0, names(global.attributes)[i], global.attributes[[i]])
+lon.attributes = ncatt_get(nci, "longitude")
+if (length(lon.attributes) > 0)
+  for (i in 1:length(lon.attributes))
+    ncatt_put(nco, "longitude", names(lon.attributes)[i], lon.attributes[[i]])
+lat.attributes = ncatt_get(nci, "latitude")
+if (length(lat.attributes) > 0)
+  for (i in 1:length(lat.attributes))
+    ncatt_put(nco, "latitude", names(lat.attributes)[i], lat.attributes[[i]])
+time.attributes = ncatt_get(nci, "time")
+if (length(time.attributes) > 0)
+  for (i in 1:length(time.attributes))
+    ncatt_put(nco, "time", names(time.attributes)[i], time.attributes[[i]])
+var.attributes = ncatt_get(nci, var.name)
+var.attributes = var.attributes[!names(var.attributes) %in% 
+                                  c("_FillValue","_NoFill","missing_value",
+                                    "valid_min","valid_max","valid_range",
+                                    "scale_factor","add_offset")]
+if (length(var.attributes) > 0)
+  for (i in 1:length(var.attributes))
+    ncatt_put(nco, var.name, names(var.attributes)[i], var.attributes[[i]])
+ncatt_put(nco, var.name, "missing_value", data.var$missval)
 
 ## Write data
 if (opts$pack) {
