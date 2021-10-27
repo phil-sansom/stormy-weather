@@ -56,7 +56,7 @@ if (!is.na(opts$previous)) {
   ncp = nc_open(opts$previous)
   ntp = ncp$dim$time$len
 }
-if (!is.n(opts$previous)) {
+if (!is.na(opts$previous)) {
   ncn = nc_open(opts$nextfile)
   ntn = ncn$dim$time$len
 }
@@ -85,11 +85,9 @@ output = array(NA, c(nx,ny,nt))
 ## Loop over times
 mask.min = min(opts$mask)
 mask.max = max(opts$mask)
-mask.range = mask.max - mask.min + 1
-nm = length(opts$mask)
+nm = mask.max - mask.min + 1
 for (t in 1:nt) {
-  print(t)
-  
+
   count = nm
   countp = 0
   countn = 0
@@ -97,25 +95,26 @@ for (t in 1:nt) {
   tt = time.mask[t]
   start = tt + mask.min
   if (start <= 0) {
-    countp  = 1 - start
+    countp = 1 - start
     if (!is.na(opts$previous)) {
-      startp  = ntp + start - 1
-      buffer[,,1:countp] = 
-        ncvar_get(ncp, opts$varname, start = c(1,1,startp), count = c(nx,ny,countp))
+      startp = ntp + start - 1
+      buffer[,,1:countp] = ncvar_get(ncp, opts$varname, start = c(1,1,startp), 
+                                     count = c(nx,ny,countp))
     }
     start = 1
     count = nm - countp
   }
-  if (nt0 < tt + count) {
+  if (nt0 < start + count - 1) {
     startn = 1
-    countn = tt + count - nt0 - 1
+    countn = start + count - nt0 - 1
     if (!is.na(opts$nextfile)) {
-      buffer[,,(nm - countn + 1):nm] = 
-        ncvar_get(ncp, opts$varname, start = c(1,1,startn), count = c(nx,ny,countn))
+      buffer[,,(nm - countn + 1):nm] = ncvar_get(ncp, opts$varname, 
+                                                 start = c(1,1,startn), 
+                                                 count = c(nx,ny,countn))
     }
     count = count - countn
   }
-  buffer[,,(countp+1):(nm - countn)] = 
+  buffer[,,(countp + 1):(nm - countn)] = 
     ncvar_get(nci, opts$varname, start = c(1,1,start), count = c(nx,ny,count))
   output[,,t] = switch(opts$action,
                        min  = apply(buffer, c(1,2), min , na.rm = TRUE),
