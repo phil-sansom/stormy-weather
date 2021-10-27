@@ -4,32 +4,29 @@
 library(optparse)
 library(ncdf4)
 
+## Load source
+source("src/history.R")
+
 ## Optional arguments
 option_list = list(
   make_option("--start", action = "store", type = "integer",
-              help = "Start [default: 1]",
-              default = 0.99),
+              default = 1, help = "Start [default: 1]"),
   make_option("--step", action = "store", type = "integer",
-              help = "Time step [default: 6]",
-              default = 0),
+              default = 6, help = "Time step [default: 6]"),
   make_option("--mask", action = "store", type = "character",
-              help = "Mask [default: -2,-1,0,1,2,3]",
-              default = "-2,-1,0,1,2,3"),
+              default = "-2,-1,0,1,2,3", help = "Mask [default: -2,-1,0,1,2,3]"),
   make_option("--action", action = "store", type = "character",
-              help = "Action (max,sum,mean,min) [default: max]",
-              default = "max"),
+              default = "max", help = "Action (max,sum,mean,min) [default: max]"),
   make_option("--previous", action = "store", type = "character",
-              help = "Previous input file"),
+              default = NA, help = "Previous input file"),
   make_option("--next", action = "store", type = "character",
-              dest = "nextfile", help = "Next input file"),
+              dest = "nextfile", default = NA, help = "Next input file"),
   make_option("--varname", action = "store", type = "character",
-              help = "Variable to read"),
+              default = NA, help = "Variable to read"),
   make_option("--compression", action = "store", type = "integer",
-              help = "Compression level to use (0-9) [default: 5]",
-              default = 5),
+              default = 5, help = "Compression level to use (0-9) [default: 5]"),
   make_option("--pack", action = "store_true", type = "logical",
-              help = "Pack data",
-              default = FALSE)
+              default = FALSE, help = "Pack data")
 )
 
 ## Argument parser
@@ -38,13 +35,15 @@ parser = OptionParser(usage = "Usage: %prog [OPTION]... INFILE OUTFILE",
                       description = "Accumulation.\n\nOperands:\n\tINFILE\n\t\tInput file\n\tOUTFILE\n\t\tOutput file")
 
 ## Parser arguments
-argv = parse_args(parser, positional_arguments = 2)
+args = commandArgs(TRUE)
+history = make.history("./accumulate.R", args)
+argv = parse_args(parser, args = args, positional_arguments = 2)
 opts = argv$options
 args = argv$args
 opts$mask = as.numeric(strsplit(opts$mask, ",")[[1]])
 if (opts$compression == 0)
   opts$compression = NA
-  
+
 infile  = args[1]
 outfile = args[2]
 
@@ -56,7 +55,7 @@ if (!is.na(opts$previous)) {
   ncp = nc_open(opts$previous)
   ntp = ncp$dim$time$len
 }
-if (!is.na(opts$previous)) {
+if (!is.na(opts$nextfile)) {
   ncn = nc_open(opts$nextfile)
   ntn = ncn$dim$time$len
 }
@@ -73,10 +72,10 @@ time.mask = seq(opts$start, nt0, opts$step)
 time = time0[time.mask]
 nt = length(time.mask)
 if (time.mask[1] + opts$mask[1] < 1 & is.na(opts$previous))
-  warning("Specify preceding file (--previous) or first time steps will not be computed")
-if (nt < time.mask[nt] + opts$mask[nm] & is.na(opts$nextfile))
-  warning("Specify succeeding file (--next) or final time steps will not be computed")
-if (2*nt < nm)
+  warning("Specify preceding file (--previous) or first time steps will not be computed correctly")
+if (nt0 < time.mask[nt] + opts$mask[nm] & is.na(opts$nextfile))
+  warning("Specify succeeding file (--next) or final time steps will not be computed correctly")
+if (2*nt0 < nm)
   stop("Length of mask exceeds twice the number of time steps")
 
 ## Initialize storage
