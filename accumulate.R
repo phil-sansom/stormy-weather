@@ -21,7 +21,7 @@ option_list = list(
   make_option("--previous", action = "store", type = "character",
               help = "Previous input file"),
   make_option("--next", action = "store", type = "character",
-              help = "Next input file"),
+              dest = "nextfile", help = "Next input file"),
   make_option("--compression", action = "store", type = "integer",
               help = "Compression level to use (0-9) [default: 5]",
               default = 5),
@@ -51,8 +51,8 @@ if (exists("previous", opts)) {
   ncp = nc_open(opts$previous)
   ntp = ncp$dim$time$len
 }
-if (exists("next", opts)) {
-  ncn = nc_open(opts$next)
+if (exists("nextfile", opts)) {
+  ncn = nc_open(opts$nextfile)
   ntn = ncn$dim$time$len
 }
 
@@ -76,7 +76,7 @@ time = time0[time.mask]
 nt = length(time.mask)
 if (time.mask[1] + opts$mask[1] < 1 & !exists("previous", opts))
   warning("Specify preceding file (--previous) or first time steps will not be computed")
-if (nt < time.mask[nt] + opts$mask[nm] & !exists("next", opts))
+if (nt < time.mask[nt] + opts$mask[nm] & !exists("nextfile", opts))
   warning("Specify succeeding file (--next) or final time steps will not be computed")
 if (2*nt < nm)
   stop("Length of mask exceeds twice the number of time steps")
@@ -111,7 +111,7 @@ for (t in 1:nt) {
   if (nt0 < tt + count) {
     startn = 1
     countn = tt + count - nt0
-    if (exists("next", opts)) {
+    if (exists("nextfile", opts)) {
       buffer[,,(nm - countn + 1):nm] = 
         ncvar_get(ncp, var.name, start = c(1,1,startn), count = c(nx,ny,countn))
     }
@@ -174,6 +174,6 @@ if (opts$pack) {
 nc_close(nci)
 nc_close(nco)
 if (exists("previous", opts))
-  nc_close(opts$previous)
+  nc_close(ncp)
 if (exists("next", opts))
-  nc_close(opts$next)
+  nc_close(ncn)
