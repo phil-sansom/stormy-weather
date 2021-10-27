@@ -99,9 +99,9 @@ for (t in 1:nt) {
   tt = time.mask[t]
   start = tt + mask.min
   if (start <= 0) {
-    startp  = ntp + start - 1
     countp  = 1 - start
     if (exists("previous", opts)) {
+      startp  = ntp + start - 1
       buffer[,,1:countp] = 
         ncvar_get(ncp, var.name, start = c(1,1,startp), count = c(nx,ny,countp))
     }
@@ -110,7 +110,7 @@ for (t in 1:nt) {
   }
   if (nt0 < tt + count) {
     startn = 1
-    countn = tt + count - nt0
+    countn = tt + count - nt0 - 1
     if (exists("nextfile", opts)) {
       buffer[,,(nm - countn + 1):nm] = 
         ncvar_get(ncp, var.name, start = c(1,1,startn), count = c(nx,ny,countn))
