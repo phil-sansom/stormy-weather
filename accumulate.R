@@ -146,6 +146,11 @@ nco = nc_create(outfile, data.var)
 
 ## Write attributes
 global.attributes = ncatt_get(nci, 0)
+if ("history" %in% names(global.attributes)) {
+  global.attributes$history = paste(history, global.attributes$history, sep = "\n")
+} else {
+  global.attributes$history = history
+}
 if (length(global.attributes) > 0)
   for (i in 1:length(global.attributes))
     ncatt_put(nco, 0, names(global.attributes)[i], global.attributes[[i]])
