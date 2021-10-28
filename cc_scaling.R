@@ -198,9 +198,6 @@ for (i in 1:n.chunks) {
     print(paste0("Reading chunk ",i," of ",n.chunks,
                  ", file ",j," of ", n.files))
     
-    ## Print status
-    print(paste("Chunk",i,"File",j))
-    
     ## Open connections
     nct = nc_open(tlist[j])
     ncp = nc_open(plist[j])
@@ -328,7 +325,6 @@ for (i in 1:n.chunks) {
       ncvar_put(nco, "nbins", nbins, 
                 start = c(1,start,1), count = c(nx,count,1))
   }
-  
 
 } ## i
 
