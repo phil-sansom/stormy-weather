@@ -1,24 +1,38 @@
 #!/usr/bin/env -S Rscript --vanilla
 
 ## Load libraries
+library(optparse)
 library(ncdf4)
 
 ## Load source
 source("src/invertlat.R")
 source("src/lonflip.R")
 
+## Optional arguments
+option_list = list(
+  make_option(c("--memory","-m"), action="store", type = "integer", 
+              default = 4096, 
+              help="Maximum memory to use (in MB) [default: 4096]"),
+  make_option(c("--quantiles","-q"), action="store", type = "character",
+              default = "0.01,0.025,0.05,0.1,0.25,0.5,0.75,0.9,0.95,0.975,0.99", 
+              help="Quantiles to compute [default: 0.01,0.025,0.05,0.1,0.25,0.5,0.75,0.9,0.95,0.975,0.99]"),
+  make_option(c("--varname","-v"), action="store", type = "character", 
+              help="Variable name to read")
+)
+
+## Argument parser
+parser = OptionParser(usage = "Usage: %prog [OPTION]... INFILE... OUTFILE",
+                      option_list = option_list,
+                      description = "Compute climatology from INFILE(s) and write to OUTFILE")
+
 ## Parse arguments
-args = commandArgs(TRUE)
+argv = parse_args(parser, positional_arguments = c(2,Inf))
+opts = argv$options
+args = argv$args
+opts$quantiles = as.numeric(strsplit(opts$quantiles, ",")[[1]])
 nargs = length(args)
-infiles = as.character(args[1:(nargs-1)])
-outfile = as.character(args[nargs])
-
-## Quantiles to compute
-probs = c(0.005,0.01,0.02,0.025,0.05,0.10,0.25,0.50,
-          0.75,0.90,0.95,0.975,0.98,0.99,0.995)
-
-## Max memory to use: Defaults to 16GB
-memory.to.use = 16*1024*1024*1024 
+infiles = args[1:(nargs-1)]
+outfile = args[nargs]
 
 ## Read dimensions
 nc  = nc_open(infiles[1])
@@ -26,11 +40,13 @@ lon = nc$dim$longitude$vals
 lat = nc$dim$latitude$vals
 calendar   = nc$dim$time$calendar
 time.units = nc$dim$time$units
-varname    = nc$var[[1]]$longname
-units      = nc$var[[1]]$units
+if (!exists("varname", opts))
+  opts$varname = names(nc$var)[1]
+varname = nc$var[[opts$varname]]$longname
+units   = nc$var[[opts$varname]]$units
 nc_close(nc)
 
-np = length(probs)
+np = length(opts$quantiles)
 nx = length(lon)
 ny = length(lat)
 
@@ -46,9 +62,9 @@ for (file in infiles) {
 nt = length(time)
 
 ## Split into chunks
-total.size = as.double(nx)*as.double(ny)*as.double(nt)*8
-n.chunks = ceiling(total.size/memory.to.use)
-chunk.size = ceiling(ny/n.chunks)
+row.size   = nx*nt*8/1024/1024
+chunk.size = floor(opts$memory/row.size/2)
+n.chunks   = ceiling(ny/chunk.size)
 chunks = data.frame(
   start = seq(0, n.chunks - 1, 1)*chunk.size + 1,
   count = rep(chunk.size, n.chunks)
@@ -59,7 +75,7 @@ chunks$count[n.chunks] = ny - (n.chunks - 1)*chunk.size
 means     = array(NA, c(nx,ny), list(longitude = lon, latitude = lat))
 sds       = array(NA, c(nx,ny), list(longitude = lon, latitude = lat))
 quantiles = array(NA, c(nx,ny,np), list(longitude = lon, latitude = lat,
-                                        quantile = probs))
+                                        quantile = opts$quantiles))
 
 ## Loop over chunks
 for (i in 1:n.chunks) {
@@ -73,7 +89,7 @@ for (i in 1:n.chunks) {
   
   ## Initialize time counter
   t1 = 1
-
+  
   ## Loop over files
   for (file in infiles) {
     
@@ -83,24 +99,25 @@ for (i in 1:n.chunks) {
     ## Open connection
     nc = nc_open(file)
     ntj = nc$dim$time$len
-
+    
     ## Load data
     mask = seq(t1, t1 + ntj - 1, 1)
-    chunk[,,mask] = ncvar_get(nc, start = c(1,start,1), count = c(nx,count,ntj))
-
+    chunk[,,mask] = 
+      ncvar_get(nc, opts$varname, start = c(1,start,1), count = c(nx,count,ntj))
+    
     ## Close connection
     nc_close(nc)
     
     ## Increment time counter
     t1 = t1 + ntj
-  
+    
   } ## file
   
   ## Compute climatologies and store
   mask = seq(start, start + count - 1, 1)
   means    [,mask] = apply(chunk, c(1,2), mean, na.rm = TRUE)
   sds      [,mask] = apply(chunk, c(1,2), sd  , na.rm = TRUE)
-  buffer = apply(chunk, c(1,2), quantile, probs = probs , na.rm = TRUE)
+  buffer = apply(chunk, c(1,2), quantile, probs = opts$quantiles , na.rm = TRUE)
   if (np > 1) {
     for (j in 1:np)
       quantiles[,mask,j] = buffer[j,,]
@@ -143,13 +160,13 @@ lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
 lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude")
 time.dim = ncdim_def("time", time.units, climatology.time,
                      unlim = TRUE, calendar = calendar, longname = "Time")
-prob.dim = ncdim_def("probability", "", probs, longname = "Probability")
+prob.dim = ncdim_def("probability", "", opts$quantiles, longname = "Probability")
 nv.dim   = ncdim_def("bounds", "", 1:2, create_dimvar = FALSE)
 
 ## Define variables
 means.var = ncvar_def("mean", units, list(lon.dim,lat.dim,time.dim),  
-                     longname = "Mean", prec = "double",
-                     compression = 5)
+                      longname = "Mean", prec = "double",
+                      compression = 5)
 sds.var   = ncvar_def("sd", units, list(lon.dim,lat.dim,time.dim),  
                      longname = "Standard deviation", prec = "double",
                      compression = 5)
