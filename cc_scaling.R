@@ -150,7 +150,7 @@ if (exists("binsize", opts)) {
 }
 
 ## Create netCDF file
-nco = nc_create(args[4], vars)
+nco = nc_create(args[3], vars)
 
 ## Write description
 ncatt_put(nco, 0, "Conventions", "CF-1.8", prec = "text")
@@ -231,7 +231,7 @@ for (i in 1:n.chunks) {
     precip0[,,mask] = buffer
     
     if (exists("mask", opts)) {
-      buffer = ncvar_get(ncs, start = c(1,start,1), count = c(nx,count,ntj))
+      buffer = ncvar_get(ncm, start = c(1,start,1), count = c(nx,count,ntj))
       mask0[,,mask] = !is.na(buffer) & buffer > 0
     }    
 
