@@ -142,7 +142,7 @@ binsize.var = ncvar_def("binsize", "", list(lon.dim,lat.dim,bin.dim,time.dim),
 clim.var    = ncvar_def("climatology_bounds", "", list(nv.dim,time.dim),
                         prec = "double")
 vars = list(clim.var, temp.var, precip.var, binsize.var)
-if (exists("nbins", opts)) {
+if (exists("binsize", opts)) {
   nbins.var = ncvar_def("nbins", "", list(lon.dim,lat.dim,time.dim),
                         longname = "Number of bins", prec = "integer",
                         compression = opts$compression)
@@ -335,7 +335,7 @@ for (i in 1:n.chunks) {
               start = c(1,ny - start - count + 2,1,1), count = c(nx,count,nb,1))
     ncvar_put(nco, "binsize", binsize, 
               start = c(1,ny - start - count + 2,1,1), count = c(nx,count,nb,1))
-    if (exists("nbins", opts))
+    if (exists("binsize", opts))
       ncvar_put(nco, "nbins", nbins, 
                 start = c(1,ny - start - count + 2,1), count = c(nx,count,1))
   } else {
@@ -345,7 +345,7 @@ for (i in 1:n.chunks) {
               start = c(1,start,1,1), count = c(nx,count,nb,1))
     ncvar_put(nco, "binsize", binsize, 
               start = c(1,start,1,1), count = c(nx,count,nb,1))
-    if (exists("nbins", opts))
+    if (exists("binsize", opts))
       ncvar_put(nco, "nbins", nbins, 
                 start = c(1,start,1), count = c(nx,count,1))
   }
