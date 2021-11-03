@@ -94,7 +94,7 @@ if (exists("binsize", opts)) {
 ## Split into chunks
 if (exists("memory", opts)) {
   row.size   = nx*nt*8/1024/1024
-  chunk.size = floor(opts$memory/row.size/2)
+  chunk.size = floor(opts$memory/row.size/3)
   n.chunks   = ceiling(ny/chunk.size)
 } else {
   chunk.size = ny
