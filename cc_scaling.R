@@ -28,16 +28,18 @@ option_list = list(
   make_option(c("--binsize","-b"), action = "store", type = "integer",
               help = "Minimum number of obs in each bin (overrides nbins)"),
   make_option(c("--memory","-m"), action = "store", type = "integer",
-              help = "Maximum memory to use (in MB)")
+              help = "Maximum memory to use (in MB)"),
+  make_option("--mask", action = "store", type = "character",
+              help = "List of mask files to apply")
 )
 
 ## Argument parser
-parser = OptionParser(usage = "Usage: %prog [OPTION]... TEMP_FILES PRECIP_FILES STORM_FILES OUTFILE",
+parser = OptionParser(usage = "Usage: %prog [OPTION]... TEMP_FILES PRECIP_FILES OUTFILE",
                       option_list = option_list,
-                      description = "Clausius-Clapeyron scaling calculations.\n\nOperands:\n\tTEMP_FILES\n\t\tList of temperature files to read\n\tPRECIP_FILES\n\t\tList of precipitation files to read\n\tSTORM_FILES\n\t\tList of storm files to read\n\tOUTFILE\n\t\tFile to write output to")
+                      description = "Clausius-Clapeyron scaling calculations.\n\nOperands:\n\tTEMP_FILES\n\t\tList of temperature files to read\n\tPRECIP_FILES\n\t\tList of precipitation files to read\n\tOUTFILE\n\t\tFile to write output to")
 
 ## Parser arguments
-argv = parse_args(parser, positional_arguments = 4)
+argv = parse_args(parser, positional_arguments = 3)
 opts = argv$options
 args = argv$args
 smoothing = opts$smoothing
@@ -47,7 +49,8 @@ if (opts$compression == 0)
 ## Read file lists
 tlist = scan(args[1], character(), -1, quiet = TRUE)
 plist = scan(args[2], character(), -1, quiet = TRUE)
-slist = scan(args[3], character(), -1, quiet = TRUE)
+if (exists("mask", opts))
+  mlist = scan(opts$mask, character(), -1, quiet = TRUE)
 n.files = length(plist)
 
 ## Read dimensions
@@ -92,9 +95,14 @@ if (exists("binsize", opts)) {
 }
 
 ## Split into chunks
+if (exists("mask", opts)) {
+  nd = 3
+} else {
+  nd = 2
+}
 if (exists("memory", opts)) {
   row.size   = nx*nt*8/1024/1024
-  chunk.size = floor(opts$memory/row.size/3)
+  chunk.size = floor(opts$memory/row.size/nd)
   n.chunks   = ceiling(ny/chunk.size)
 } else {
   chunk.size = ny
@@ -184,7 +192,7 @@ for (i in 1:n.chunks) {
   count = chunks$count[i]
   temp0   = array(NA, c(nx,count,nt))
   precip0 = array(NA, c(nx,count,nt))
-  storm0  = array(NA, c(nx,count,nt))
+  mask0   = array(NA, c(nx,count,nt))
   temp    = array(NA, c(nx,count,nb))
   precip  = array(NA, c(nx,count,nb))
   binsize = array(NA, c(nx,count,nb))
@@ -203,7 +211,8 @@ for (i in 1:n.chunks) {
     ## Open connections
     nct = nc_open(tlist[j])
     ncp = nc_open(plist[j])
-    ncs = nc_open(slist[j])
+    if (exists("mask", opts))
+      ncm = nc_open(mlist[j])
     
     ## Get times
     ntj = nct$dim$time$len
@@ -221,14 +230,16 @@ for (i in 1:n.chunks) {
     buffer[mask1] = NA
     precip0[,,mask] = buffer
     
-    buffer = ncvar_get(ncs, start = c(1,start,1), count = c(nx,count,ntj))
-    storm0[,,mask] = !is.na(buffer) & buffer > 0
-    
+    if (exists("mask", opts)) {
+      buffer = ncvar_get(ncs, start = c(1,start,1), count = c(nx,count,ntj))
+      mask0[,,mask] = !is.na(buffer) & buffer > 0
+    }    
 
     ## Close connections
     nc_close(nct)
     nc_close(ncp)
-    nc_close(ncs)
+    if (exists("mask", opts))
+      nc_close(ncm)
     rm(buffer,mask,mask1)
     gc()
 
@@ -266,8 +277,10 @@ for (i in 1:n.chunks) {
       mask    = order(temp0[k,l,(1 + smoothing):(nt - smoothing)]) + smoothing
       temp1   = temp0  [k,l,mask]
       precip1 = precip0[k,l,mask]
-      storm1  = storm0 [k,l,mask]
-      mask    = !is.na(precip1) & storm1
+      mask1   = mask0  [k,l,mask]
+      mask    = !is.na(precip1)
+      if (exists("mask", opts))
+        mask = mask & mask1
       temp1   = temp1  [mask]
       precip1 = precip1[mask]
       if (exists("binsize", opts)) {
@@ -288,7 +301,7 @@ for (i in 1:n.chunks) {
       } ## nbkl > 0
     } ## l
   } ## k
-  rm(precip0,temp0,temp1,precip1,storm1,mask,slice)
+  rm(precip0,temp0,temp1,precip1,mask1,mask,slice)
   gc()
   
   ## Transform data
