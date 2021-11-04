@@ -72,20 +72,20 @@ for (i in 1:n.files) {
   latp = ncp$dim$latitude$vals
   timep = ncp$dim$time$vals
   nc_close(ncp)
-  if (!identical(lont,lonp))
-    stop(paste("Longitude dimensions don't match in file", 1))
-  if (!identical(latt,latp))
-    stop(paste("Latitude dimensions don't match in file", 1))
-  if (!identical(timet,timep))
-    stop(paste("Time dimensions don't match in file", 1))
+  if (any(lont != lonp))
+    stop(paste("Longitude dimensions don't match in file", i))
+  if (any(latt != latp))
+    stop(paste("Latitude dimensions don't match in file", i))
+  if (any(timet != timep))
+    stop(paste("Time dimensions don't match in file", i))
   if (i > 1) {
-    if (!identical(lont,lont0))
+    if (any(lont != lont0))
       stop(paste("Longitude dimensions don't match between temp files", i-1, "and", i))
-    if (!identical(latt,latt0))
+    if (any(latt != latt0))
       stop(paste("Latitude dimensions don't match between temp files",  i-1, "and", i))
-    if (!identical(lonp,lonp0))
+    if (any(lonp != lonp0))
       stop(paste("Longitude dimensions don't match between precip files", i-1, "and", i))
-    if (!identical(latp,latp0))
+    if (any(latp != latp0))
       stop(paste("Latitude dimensions don't match between precip files",  i-1, "and", i))
   }
   lont0 = lont; latt0 = latt; timet0 = timet
@@ -97,16 +97,16 @@ for (i in 1:n.files) {
     latm = ncm$dim$latitude$vals
     timem = ncm$dim$time$vals
     nc_close(ncm)
-    if (!identical(lont,lonm))
-      stop(paste("Longitude dimensions don't match in mask file", 1))
-    if (!identical(latt,latm))
-      stop(paste("Latitude dimensions don't match in mask file", 1))
-    if (!identical(timet,timem))
-      stop(paste("Time dimensions don't match in mask file", 1))
+    if (any(lont != lonm))
+      stop(paste("Longitude dimensions don't match in mask file", i))
+    if (any(latt != latm))
+      stop(paste("Latitude dimensions don't match in mask file", i))
+    if (any(timet != timem))
+      stop(paste("Time dimensions don't match in mask file", i))
     if (i > 1) {
-      if (!identical(lonm,lonm0))
+      if (any(lonm != lonm0))
         stop(paste("Longitude dimensions don't match between mask files", i-1, "and", i))
-      if (!identical(latm,latm0))
+      if (any(latm != latm0))
         stop(paste("Latitude dimensions don't match between mask files",  i-1, "and", i))
     }
     lonm0 = lonm; latm0 = latm; timem0 = timem
