@@ -49,17 +49,95 @@ if (opts$compression == 0)
 ## Read file lists
 tlist = scan(args[1], character(), -1, quiet = TRUE)
 plist = scan(args[2], character(), -1, quiet = TRUE)
-if (exists("mask", opts))
+if (length(tlist) != length(plist))
+  stop("Lengths of file lists differ")
+if (exists("mask", opts)) {
   mlist = scan(opts$mask, character(), -1, quiet = TRUE)
-n.files = length(plist)
+  if (length(tlist) != length(mlist))
+    stop("Length of mask list differs from temp and precip lists")
+}
+n.files = length(tlist)
+
+## Check dimensions
+time = numeric()
+for (i in 1:n.files) {
+  
+  nct = nc_open(tlist[i])
+  lont = nct$dim$longitude$vals
+  latt = nct$dim$latitude$vals
+  timet = nct$dim$time$vals
+  nc_close(nct)
+  ncp = nc_open(plist[i])
+  lonp = ncp$dim$longitude$vals
+  latp = ncp$dim$latitude$vals
+  timep = ncp$dim$time$vals
+  nc_close(ncp)
+  if (!identical(lont,lonp))
+    stop(paste("Longitude dimensions don't match in file", 1))
+  if (!identical(latt,latp))
+    stop(paste("Latitude dimensions don't match in file", 1))
+  if (!identical(timet,timep))
+    stop(paste("Time dimensions don't match in file", 1))
+  if (i > 1) {
+    if (!identical(lont,lont0))
+      stop(paste("Longitude dimensions don't match between temp files", i-1, "and", i))
+    if (!identical(latt,latt0))
+      stop(paste("Latitude dimensions don't match between temp files",  i-1, "and", i))
+    if (!identical(lonp,lonp0))
+      stop(paste("Longitude dimensions don't match between precip files", i-1, "and", i))
+    if (!identical(latp,latp0))
+      stop(paste("Latitude dimensions don't match between precip files",  i-1, "and", i))
+  }
+  lont0 = lont; latt0 = latt; timet0 = timet
+  lonp0 = lonp; latp0 = latp; timep0 = timep
+  
+  if (exists("mask", opts)) {
+    ncm = nc_open(mlist[i])
+    lonm = ncm$dim$longitude$vals
+    latm = ncm$dim$latitude$vals
+    timem = ncm$dim$time$vals
+    nc_close(ncm)
+    if (!identical(lont,lonm))
+      stop(paste("Longitude dimensions don't match in mask file", 1))
+    if (!identical(latt,latm))
+      stop(paste("Latitude dimensions don't match in mask file", 1))
+    if (!identical(timet,timem))
+      stop(paste("Time dimensions don't match in mask file", 1))
+    if (i > 1) {
+      if (!identical(lonm,lonm0))
+        stop(paste("Longitude dimensions don't match between mask files", i-1, "and", i))
+      if (!identical(latm,latm0))
+        stop(paste("Latitude dimensions don't match between mask files",  i-1, "and", i))
+    }
+    lonm0 = lonm; latm0 = latm; timem0 = timem
+  }
+  
+  time = c(time,timet)
+  
+} ## i
+nt = length(time)
+dt = time[2] - time[1]
+if (exists("binsize", opts)) {
+  nb = floor((nt - 2*smoothing)/opts$binsize)
+} else {
+  nb = opts$nbins
+}
 
 ## Read dimensions
-nc = nc_open(plist[1])
+nc = nc_open(tlist[1])
 lon0 = nc$dim$longitude$vals
 lat0 = nc$dim$latitude$vals
 calendar   = nc$dim$time$calendar
 time.units = nc$dim$time$units
+temp.name  = nc$var[[1]]$name
+temp.units = nc$var[[1]]$units
+temp.longname = nc$var[[1]]$longname
+nc_close(nc)
+
+nc = nc_open(plist[1])
+precip.name  = nc$var[[1]]$name
 precip.units = nc$var[[1]]$units
+precip.longname = nc$var[[1]]$longname
 nc_close(nc)
 
 nx = length(lon0)
@@ -76,23 +154,6 @@ if (fliplon) {
   lon = lon0
 }
 lat = if (fliplat) rev(lat0) else lat0
-
-## Read times
-time = numeric()
-for (file in plist) {
-  
-  nc   = nc_open(file)
-  time = c(time,nc$dim$time$vals)
-  nc_close(nc)
-  
-} ## file
-nt = length(time)
-dt = time[2] - time[1]
-if (exists("binsize", opts)) {
-  nb = floor((nt - 2*smoothing)/opts$binsize)
-} else {
-  nb = opts$nbins
-}
 
 ## Split into chunks
 if (exists("mask", opts)) {
@@ -127,13 +188,16 @@ time.dim = ncdim_def("time", time.units, (time[1] + time[nt] + dt)/2,
 nv.dim   = ncdim_def("bounds", "", 1:2, create_dimvar = FALSE)
 
 ## Define variables
-temp.var    = ncvar_def("temp", "K", list(lon.dim,lat.dim,bin.dim,time.dim),
+temp.var    = ncvar_def(temp.name, temp.units, 
+                        list(lon.dim,lat.dim,bin.dim,time.dim),
                         missval = 9.9692099683868690e+36,
-                        longname = "Temperature", prec = "double",
+                        longname = temp.longname, prec = "double",
                         compression = opts$compression)
-precip.var  = ncvar_def("precip", "mm", list(lon.dim,lat.dim,bin.dim,time.dim),
+precip.var  = ncvar_def(precip.name, 
+                        ifelse(precip.units %in% c("mm","cm","m"),"mm",precip.units), 
+                        list(lon.dim,lat.dim,bin.dim,time.dim),
                         missval = 9.9692099683868690e+36,
-                        longname = "Precipitation", prec = "double",
+                        longname = precip.longname, prec = "double",
                         compression = opts$compression)
 binsize.var = ncvar_def("binsize", "", list(lon.dim,lat.dim,bin.dim,time.dim),
                         missval = -2147483647,
@@ -160,11 +224,16 @@ ncatt_put(nco, "longitude", "standard_name", "longitude", prec = "text")
 ncatt_put(nco, "latitude" , "standard_name", "latitude" , prec = "text")
 ncatt_put(nco, "time"     , "standard_name", "time"     , prec = "text")
 
+## Write axes
+ncatt_put(nco, "longitude", "axis", "X", prec = "text")
+ncatt_put(nco, "latitude" , "axis", "Y", prec = "text")
+ncatt_put(nco, "time"     , "axis", "T", prec = "text")
+
 ## Write climatological time axis
 ncvar_put(nco, "climatology_bounds", c(time[1],time[nt] + dt))
 ncatt_put(nco, "time"  , "climatology" , "climatology_bounds", prec = "text")
-ncatt_put(nco, "temp"  , "cell_methods", "time: mean"        , prec = "text")
-ncatt_put(nco, "precip", "cell_methods", "time: quantile"    , prec = "text")
+ncatt_put(nco, temp.name  , "cell_methods", "time: mean"    , prec = "text")
+ncatt_put(nco, precip.name, "cell_methods", "time: quantile", prec = "text")
 
 ## Write parameters
 ncatt_put(nco, 0, "quantile" , opts$quantile , prec = "double" )
@@ -329,9 +398,9 @@ for (i in 1:n.chunks) {
   ## Write data
   print(paste("Writing chunk",i,"of",n.chunks))
   if (fliplat) {
-    ncvar_put(nco, "temp", temp, 
+    ncvar_put(nco, temp.name, temp, 
               start = c(1,ny - start - count + 2,1,1), count = c(nx,count,nb,1))
-    ncvar_put(nco, "precip", precip, 
+    ncvar_put(nco, precip.name, precip, 
               start = c(1,ny - start - count + 2,1,1), count = c(nx,count,nb,1))
     ncvar_put(nco, "binsize", binsize, 
               start = c(1,ny - start - count + 2,1,1), count = c(nx,count,nb,1))
@@ -339,9 +408,9 @@ for (i in 1:n.chunks) {
       ncvar_put(nco, "nbins", nbins, 
                 start = c(1,ny - start - count + 2,1), count = c(nx,count,1))
   } else {
-    ncvar_put(nco, "temp", temp, 
+    ncvar_put(nco, temp.name, temp, 
               start = c(1,start,1,1), count = c(nx,count,nb,1))
-    ncvar_put(nco, "precip", precip, 
+    ncvar_put(nco, precip.name, precip, 
               start = c(1,start,1,1), count = c(nx,count,nb,1))
     ncvar_put(nco, "binsize", binsize, 
               start = c(1,start,1,1), count = c(nx,count,nb,1))
