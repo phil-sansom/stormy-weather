@@ -261,7 +261,8 @@ for (i in 1:n.chunks) {
   count = chunks$count[i]
   temp0   = array(NA, c(nx,count,nt))
   precip0 = array(NA, c(nx,count,nt))
-  mask0   = array(NA, c(nx,count,nt))
+  if (exists("mask", opts))
+    mask0   = array(NA, c(nx,count,nt))
   temp    = array(NA, c(nx,count,nb))
   precip  = array(NA, c(nx,count,nb))
   binsize = array(NA, c(nx,count,nb))
@@ -346,10 +347,13 @@ for (i in 1:n.chunks) {
       mask    = order(temp0[k,l,(1 + smoothing):(nt - smoothing)]) + smoothing
       temp1   = temp0  [k,l,mask]
       precip1 = precip0[k,l,mask]
-      mask1   = mask0  [k,l,mask]
-      mask    = !is.na(precip1)
-      if (exists("mask", opts))
-        mask = mask & mask1
+      if (exists("mask", opts)) {
+        mask1 = mask0  [k,l,mask]
+        mask  = !is.na(precip1)
+        mask  = mask & mask1
+      } else {
+        mask  = !is.na(precip1)
+      }
       temp1   = temp1  [mask]
       precip1 = precip1[mask]
       if (exists("binsize", opts)) {
@@ -370,7 +374,9 @@ for (i in 1:n.chunks) {
       } ## nbkl > 0
     } ## l
   } ## k
-  rm(precip0,temp0,temp1,precip1,mask1,mask,slice)
+  rm(precip0,temp0,temp1,precip1,mask,slice)
+  if (exists("mask", opts))
+    rm(mask0,mask1)
   gc()
   
   ## Transform data
