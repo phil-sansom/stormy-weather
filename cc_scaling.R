@@ -288,21 +288,21 @@ for (i in 1:n.chunks) {
     ntj = nct$dim$time$len
 
     ## Load data
-    mask = seq(t1, t1 + ntj - 1, 1)
+    slice = seq(t1, t1 + ntj - 1, 1)
     
     buffer = ncvar_get(nct, start = c(1,start,1), count = c(nx,count,ntj))
-    temp0[,,mask] = buffer
+    temp0[,,slice] = buffer
     
     buffer = ncvar_get(ncp, start = c(1,start,1), count = c(nx,count,ntj))
     mask1 = which(buffer < 0)
     buffer[mask1] = 0
     mask1 = which(buffer < opts$threshold)
     buffer[mask1] = NA
-    precip0[,,mask] = buffer
+    precip0[,,slice] = buffer
     
     if (exists("mask", opts)) {
       buffer = ncvar_get(ncm, start = c(1,start,1), count = c(nx,count,ntj))
-      mask0[,,mask] = !is.na(buffer) & buffer > 0
+      mask0[,,slice] = !is.na(buffer) & buffer > 0
     }    
 
     ## Close connections
@@ -310,7 +310,7 @@ for (i in 1:n.chunks) {
     nc_close(ncp)
     if (exists("mask", opts))
       nc_close(ncm)
-    rm(buffer,mask,mask1)
+    rm(buffer,slice,mask1)
     gc()
 
     ## Increment time counter
