@@ -288,6 +288,7 @@ for (i in 1:n.chunks) {
 
   # ## Smooth temp data
   if (smoothing > 0) {
+    
     print(paste("Smoothing chunk",i,"of",n.chunks))
     smoothing = opts$smoothing
     nn = 2*smoothing + 1
@@ -305,12 +306,15 @@ for (i in 1:n.chunks) {
       temp0[,,k] = buffer[,,(k - 1) %% nn + 1]
     rm(mask,buffer,nn,kk)
     gc()
-  }
+    
+  } ## smoothing
 
   ## Quantile regression
   print(paste("Quantile regression on chunk",i,"of",n.chunks))
   for (k in 1:nx) {
     for (l in 1:count) {
+      
+      ## Extract data
       temp1   = temp0  [k,l,]
       precip1 = precip0[k,l,]
       mask    = !is.na(precip1)
@@ -320,12 +324,21 @@ for (i in 1:n.chunks) {
       }
       temp1   = temp1  [mask]
       precip1 = precip1[mask]
-      qrm = rq(log(precip1) ~ temp1, tau = opts$quantile)
-      qrm.summary = summary(qrm, se = "rank", alpha = 1 - opts$level)
+      
+      ## Fit model
+      rq0 = try(rq(log(precip1) ~ temp1, tau = opts$quantile), TRUE)
+      if (class(rq0) == "try-error")
+        next
+      rq0.summary = summary(qrm, se = "rank", alpha = 1 - opts$level)
+      if (class(rq0.summary) == "try-error")
+        next
       coefs = 100*(exp(qrm.summary$coefficients[2,]) - 1)
+      
+      ## Store results
       beta [k,l] = coefs[1]
       lower[k,l] = coefs[2]
       upper[k,l] = coefs[3]
+      
     } ## l
   } ## k
   rm(precip0,temp0,temp1,precip1,mask)
