@@ -329,7 +329,7 @@ for (i in 1:n.chunks) {
       rq0 = try(rq(log(precip1) ~ temp1, tau = opts$quantile), TRUE)
       if (class(rq0) == "try-error")
         next
-      rq0.summary = summary(qrm, se = "rank", alpha = 1 - opts$level)
+      rq0.summary = try(summary(qrm, se = "rank", alpha = 1 - opts$level), TRUE)
       if (class(rq0.summary) == "try-error")
         next
       coefs = 100*(exp(qrm.summary$coefficients[2,]) - 1)
