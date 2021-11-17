@@ -23,13 +23,16 @@ option_list = list(
   make_option(c("--level","-l"), action = "store", type = "double",
               help = "Nominal confidence level required [default: 0.95]",
               default = 0.95),
-  make_option("--nid", action = "store_false", type = "logical",
+  make_option(c("--method","-m"), action = "store", type = "double",
+              help = "Method of inference (Wald or Rank) [default: Wald]",
+              default = "Wald"),
+  make_option(c("--nid","n"), action = "store_false", type = "logical",
               help = "Not independent and identically distributed",
               dest = "iid", default = TRUE),
-  make_option(c("--compression","-c"), action = "store", type = "integer",
+  make_option("--compression", action = "store", type = "integer",
               help = "Compression level to use (0-9) [default: 5]",
               default = 5),
-  make_option(c("--memory","-m"), action = "store", type = "integer",
+  make_option("--memory", action = "store", type = "integer",
               help = "Maximum memory to use (in MB)"),
   make_option("--mask", action = "store", type = "character",
               help = "List of mask files to apply")
@@ -45,6 +48,8 @@ argv = parse_args(parser, positional_arguments = 3)
 opts = argv$options
 args = argv$args
 smoothing = opts$smoothing
+if (!opts$method %in% c("Wald","Rank"))
+  stop("Method should be either Wald or Rank")
 if (opts$compression == 0)
   opts$compression = NA
 
@@ -180,20 +185,57 @@ if (fliplat) {
 lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
 lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude")
 
-## Define variables
-beta.var = ncvar_def("beta", "%/K", list(lon.dim,lat.dim),
-                     missval = 9.9692099683868690e+36,
-                     longname = "Fitted value", prec = "double",
-                     compression = opts$compression)
-lwr.var = ncvar_def("lower", "%/K", list(lon.dim,lat.dim),
-                     missval = 9.9692099683868690e+36,
-                     longname = "Lower bound", prec = "double",
-                     compression = opts$compression)
-upr.var = ncvar_def("upper", "%/K", list(lon.dim,lat.dim),
-                     missval = 9.9692099683868690e+36,
-                     longname = "Upper bound", prec = "double",
-                     compression = opts$compression)
-vars = list(beta.var, lwr.var, upr.var)
+if (opts$method == "Wald") {
+
+  npar = 2
+  par.names = c("Intercept","Temp")
+  nchar = max(nchar(par.names))
+  
+  ## Define dimensions
+  par.dim  = ncdim_def("par"  , "", 1:npar , create_dimvar = FALSE)
+  char.dim = ncdim_def("nchar", "", 1:nchar, create_dimvar = FALSE)
+  
+  ## Define variables
+  par.var   = ncvar_def("parameter", "", list(char.dim,par.dim),
+                        longname = "Parameter", prec = "char")
+  mu.var    = ncvar_def("mu", "%/K", list(lon.dim,lat.dim, par.dim),
+                        missval = 9.9692099683868690e+36,
+                        longname = "Coefficients", 
+                        prec = "double",
+                        compression = opts$compression)
+  Sigma.var = ncvar_def("Sigma", "%/K", list(lon.dim,lat.dim,par.dim,par.dim),
+                        missval = 9.9692099683868690e+36,
+                        longname = "Covariance matrix", 
+                        prec = "double",
+                        compression = opts$compression)
+  df.var    = ncvar_def("df", "", list(lon.dim,lat.dim),
+                        missval = -2147483647,
+                        longname = "Residual degrees of freedom", 
+                        prec = "integer",
+                        compression = opts$compression)
+  vars = list(par.var, mu.var, Sigma.var, df.var)
+  
+} else {
+
+  ## Define variables
+  beta.var = ncvar_def("beta", "%/K", list(lon.dim,lat.dim),
+                       missval = 9.9692099683868690e+36,
+                       longname = "Fitted value", 
+                       prec = "double",
+                       compression = opts$compression)
+  lwr.var  = ncvar_def("lower", "%/K", list(lon.dim,lat.dim),
+                       missval = 9.9692099683868690e+36,
+                       longname = "Lower bound", 
+                       prec = "double",
+                       compression = opts$compression)
+  upr.var  = ncvar_def("upper", "%/K", list(lon.dim,lat.dim),
+                       missval = 9.9692099683868690e+36,
+                       longname = "Upper bound", 
+                       prec = "double",
+                       compression = opts$compression)
+  vars = list(beta.var, lwr.var, upr.var)
+  
+}
 
 ## Create netCDF file
 nco = nc_create(args[3], vars)
@@ -213,8 +255,17 @@ ncatt_put(nco, "latitude" , "axis", "Y", prec = "text")
 ncatt_put(nco, 0, "quantile" , opts$quantile , prec = "double" )
 ncatt_put(nco, 0, "smoothing", opts$smoothing, prec = "integer")
 ncatt_put(nco, 0, "threshold", opts$threshold, prec = "double" )
-ncatt_put(nco, 0, "level"    , opts$level    , prec = "double" )
-ncatt_put(nco, 0, "iid"      , opts$iid      , prec = "integer" )
+ncatt_put(nco, 0, "method"   , opts$method   , prec = "text"   )
+ncatt_put(nco, 0, "iid"      , opts$iid      , prec = "integer")
+if (opts$method == "Rank")
+  ncatt_put(nco, 0, "level", opts$level, prec = "double")
+
+## Write auxiliary coordinate variable
+if (opts$method == "Wald") {
+  ncatt_put(nco, "mu", "coordinates", "parameter")
+  ncatt_put(nco, "Sigma", "coordinates", "parameter parameter")
+  ncvar_put(nco, "parameter", par.names)
+}
 
 ## Transform threshold
 if (! precip.units %in% c("mm","cm","m"))
@@ -234,9 +285,15 @@ for (i in 1:n.chunks) {
   precip0 = array(NA, c(nx,count,nt))
   if (exists("mask", opts))
     mask0   = array(NA, c(nx,count,nt))
-  beta  = array(NA, c(nx,count))
-  lower = array(NA, c(nx,count))
-  upper = array(NA, c(nx,count))
+  if (opts$method == "Wald") {
+    mu    = array(NA, c(nx,count,npar))
+    Sigma = array(NA, c(nx,count,npar,npar))
+    df    = array(NA, c(nx,count))
+  } else {
+    beta  = array(NA, c(nx,count))
+    lower = array(NA, c(nx,count))
+    upper = array(NA, c(nx,count))
+  }
 
   ## Initialize time counter
   t1 = 1
@@ -329,19 +386,37 @@ for (i in 1:n.chunks) {
       temp1   = temp1  [mask]
       precip1 = precip1[mask]
       
-      ## Fit model
-      rq0 = try(rq(log(precip1) ~ temp1, tau = opts$quantile, iid = opts$iid), TRUE)
-      if (class(rq0) == "try-error")
-        next
-      rq0.summary = try(summary(qrm, se = "rank", alpha = 1 - opts$level, iid = opts$iid), TRUE)
-      if (class(rq0.summary) == "try-error")
-        next
-      coefs = 100*(exp(qrm.summary$coefficients[2,]) - 1)
+      if (opts$method == "Wald") {
+        
+        ## Fit model
+        rq0 = try(rq(log(precip1) ~ temp1, 
+                     tau = opts$quantile, iid = opts$iid), TRUE)
+        if (class(rq0) == "try-error")
+          next
+        rq0.summary = try(summary(qrm, se = ifelse(opts$iid, "iid", "nid"), 
+                                  covariance = TRUE), TRUE)
+        if (class(rq0.summary) == "try-error")
+          next
+        
+      } else {
+        
+        ## Fit model
+        rq0 = try(rq(log(precip1) ~ temp1, 
+                     tau = opts$quantile, iid = opts$iid), TRUE)
+        if (class(rq0) == "try-error")
+          next
+        rq0.summary = try(summary(qrm, se = "rank", 
+                                  alpha = 1 - opts$level, iid = opts$iid), TRUE)
+        if (class(rq0.summary) == "try-error")
+          next
+        coefs = 100*(exp(qrm.summary$coefficients[2,]) - 1)
+        
+        ## Store results
+        beta [k,l] = coefs[1]
+        lower[k,l] = coefs[2]
+        upper[k,l] = coefs[3]
       
-      ## Store results
-      beta [k,l] = coefs[1]
-      lower[k,l] = coefs[2]
-      upper[k,l] = coefs[3]
+      } 
       
     } ## l
   } ## k
