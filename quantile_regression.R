@@ -23,6 +23,9 @@ option_list = list(
   make_option(c("--level","-l"), action = "store", type = "double",
               help = "Nominal confidence level required [default: 0.95]",
               default = 0.95),
+  make_option("--nid", action = "store_false", type = "logical",
+              help = "Not independent and identically distributed",
+              dest = "iid", default = TRUE),
   make_option(c("--compression","-c"), action = "store", type = "integer",
               help = "Compression level to use (0-9) [default: 5]",
               default = 5),
@@ -211,6 +214,7 @@ ncatt_put(nco, 0, "quantile" , opts$quantile , prec = "double" )
 ncatt_put(nco, 0, "smoothing", opts$smoothing, prec = "integer")
 ncatt_put(nco, 0, "threshold", opts$threshold, prec = "double" )
 ncatt_put(nco, 0, "level"    , opts$level    , prec = "double" )
+ncatt_put(nco, 0, "iid"      , opts$iid      , prec = "integer" )
 
 ## Transform threshold
 if (! precip.units %in% c("mm","cm","m"))
@@ -326,10 +330,10 @@ for (i in 1:n.chunks) {
       precip1 = precip1[mask]
       
       ## Fit model
-      rq0 = try(rq(log(precip1) ~ temp1, tau = opts$quantile), TRUE)
+      rq0 = try(rq(log(precip1) ~ temp1, tau = opts$quantile, iid = opts$iid), TRUE)
       if (class(rq0) == "try-error")
         next
-      rq0.summary = try(summary(qrm, se = "rank", alpha = 1 - opts$level), TRUE)
+      rq0.summary = try(summary(qrm, se = "rank", alpha = 1 - opts$level, iid = opts$iid), TRUE)
       if (class(rq0.summary) == "try-error")
         next
       coefs = 100*(exp(qrm.summary$coefficients[2,]) - 1)
