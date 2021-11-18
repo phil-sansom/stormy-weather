@@ -20,15 +20,15 @@ option_list = list(
   make_option(c("--threshold","-t"), action = "store", type = "double",
               help = "Threshold for wet days (mm) [default: 0.1]",
               default = 0.1),
+  make_option(c("--method","-m"), action = "store", type = "character",
+              help = "Method of inference (Wald or Rank) [default: Wald]",
+              default = "Wald"),
+  make_option(c("--nid","-n"), action = "store_false", type = "logical",
+              help = "Not independent and identically distributed",
+              dest = "iid", default = TRUE),
   make_option(c("--level","-l"), action = "store", type = "double",
               help = "Nominal confidence level required [default: 0.95]",
               default = 0.95),
-  make_option(c("--method","-m"), action = "store", type = "double",
-              help = "Method of inference (Wald or Rank) [default: Wald]",
-              default = "Wald"),
-  make_option(c("--nid","n"), action = "store_false", type = "logical",
-              help = "Not independent and identically distributed",
-              dest = "iid", default = TRUE),
   make_option("--compression", action = "store", type = "integer",
               help = "Compression level to use (0-9) [default: 5]",
               default = 5),
@@ -142,6 +142,14 @@ precip.units = nc$var[[1]]$units
 precip.longname = nc$var[[1]]$longname
 nc_close(nc)
 
+if (precip.units %in% c("mm","cm","m")) {
+  intercept.units = "ln(mm)"
+  slope.units     = paste0("ln(mm)/",temp.units)
+} else {
+  intercept.units = paste0("ln(",precip.units,")")
+  slope.units     = paste0("ln(",precip.units,")/",temp.units)
+}
+
 nx = length(lon0)
 ny = length(lat0)
 
@@ -185,55 +193,52 @@ if (fliplat) {
 lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
 lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude")
 
+## Define dimensions
+npar = 2
+par.names = c("Intercept","Slope")
+nchar = max(nchar(par.names))
+par.dim  = ncdim_def("par"  , "", 1:npar , create_dimvar = FALSE)
+char.dim = ncdim_def("nchar", "", 1:nchar, create_dimvar = FALSE)
+
+## Define variables
+par.var  = ncvar_def("parameter", "", list(char.dim,par.dim),
+                     longname = "Parameter", prec = "char")
+coef.var = ncvar_def("coefficients", "", list(lon.dim,lat.dim,par.dim),
+                     missval = 9.9692099683868690e+36,
+                     longname = "Coefficients", 
+                     prec = "double",
+                     compression = opts$compression)
+vars = list(par.var,coef.var)
+
 if (opts$method == "Wald") {
 
-  npar = 2
-  par.names = c("Intercept","Temp")
-  nchar = max(nchar(par.names))
-  
-  ## Define dimensions
-  par.dim  = ncdim_def("par"  , "", 1:npar , create_dimvar = FALSE)
-  char.dim = ncdim_def("nchar", "", 1:nchar, create_dimvar = FALSE)
-  
   ## Define variables
-  par.var   = ncvar_def("parameter", "", list(char.dim,par.dim),
-                        longname = "Parameter", prec = "char")
-  mu.var    = ncvar_def("mu", "%/K", list(lon.dim,lat.dim, par.dim),
-                        missval = 9.9692099683868690e+36,
-                        longname = "Coefficients", 
-                        prec = "double",
-                        compression = opts$compression)
-  Sigma.var = ncvar_def("Sigma", "%/K", list(lon.dim,lat.dim,par.dim,par.dim),
-                        missval = 9.9692099683868690e+36,
-                        longname = "Covariance matrix", 
-                        prec = "double",
-                        compression = opts$compression)
-  df.var    = ncvar_def("df", "", list(lon.dim,lat.dim),
-                        missval = -2147483647,
-                        longname = "Residual degrees of freedom", 
-                        prec = "integer",
-                        compression = opts$compression)
-  vars = list(par.var, mu.var, Sigma.var, df.var)
+  cov.var = ncvar_def("covariance", "", list(lon.dim,lat.dim,par.dim,par.dim),
+                      missval = 9.9692099683868690e+36,
+                      longname = "Covariance matrix", 
+                      prec = "double",
+                      compression = opts$compression)
+  df.var  = ncvar_def("df", "", list(lon.dim,lat.dim),
+                      missval = -2147483647L,
+                      longname = "Residual degrees of freedom", 
+                      prec = "integer",
+                      compression = opts$compression)
+  vars = c(vars, list(cov.var, df.var))
   
-} else {
+} else if (opts$method == "Rank") {
 
   ## Define variables
-  beta.var = ncvar_def("beta", "%/K", list(lon.dim,lat.dim),
-                       missval = 9.9692099683868690e+36,
-                       longname = "Fitted value", 
-                       prec = "double",
-                       compression = opts$compression)
-  lwr.var  = ncvar_def("lower", "%/K", list(lon.dim,lat.dim),
-                       missval = 9.9692099683868690e+36,
-                       longname = "Lower bound", 
-                       prec = "double",
-                       compression = opts$compression)
-  upr.var  = ncvar_def("upper", "%/K", list(lon.dim,lat.dim),
-                       missval = 9.9692099683868690e+36,
-                       longname = "Upper bound", 
-                       prec = "double",
-                       compression = opts$compression)
-  vars = list(beta.var, lwr.var, upr.var)
+  lwr.var = ncvar_def("lower", "", list(lon.dim,lat.dim,par.dim),
+                      missval = 9.9692099683868690e+36,
+                      longname = "Lower bound", 
+                      prec = "double",
+                      compression = opts$compression)
+  upr.var = ncvar_def("upper", "", list(lon.dim,lat.dim,par.dim),
+                      missval = 9.9692099683868690e+36,
+                      longname = "Upper bound", 
+                      prec = "double",
+                      compression = opts$compression)
+  vars = c(vars, list(lwr.var, upr.var))
   
 }
 
@@ -261,10 +266,13 @@ if (opts$method == "Rank")
   ncatt_put(nco, 0, "level", opts$level, prec = "double")
 
 ## Write auxiliary coordinate variable
+ncvar_put(nco, "parameter", par.names)
+ncatt_put(nco, "coefficients", "coordinates", "parameter")
 if (opts$method == "Wald") {
-  ncatt_put(nco, "mu", "coordinates", "parameter")
-  ncatt_put(nco, "Sigma", "coordinates", "parameter parameter")
-  ncvar_put(nco, "parameter", par.names)
+  ncatt_put(nco, "covariance", "coordinates", "parameter parameter")
+} else if (opts$method == "Rank") {
+  ncatt_put(nco, "lower", "coordinates", "parameter")
+  ncatt_put(nco, "upper", "coordinates", "parameter")
 }
 
 ## Transform threshold
@@ -284,15 +292,14 @@ for (i in 1:n.chunks) {
   temp0   = array(NA, c(nx,count,nt))
   precip0 = array(NA, c(nx,count,nt))
   if (exists("mask", opts))
-    mask0   = array(NA, c(nx,count,nt))
+    mask0 = array(NA, c(nx,count,nt))
+  coef = array(NA, c(nx,count,npar))
   if (opts$method == "Wald") {
-    mu    = array(NA, c(nx,count,npar))
-    Sigma = array(NA, c(nx,count,npar,npar))
+    cov   = array(NA, c(nx,count,npar,npar))
     df    = array(NA, c(nx,count))
-  } else {
-    beta  = array(NA, c(nx,count))
-    lower = array(NA, c(nx,count))
-    upper = array(NA, c(nx,count))
+  } else if (opts$method == "Rank") {
+    lower = array(NA, c(nx,count,npar))
+    upper = array(NA, c(nx,count,npar))
   }
 
   ## Initialize time counter
@@ -385,36 +392,35 @@ for (i in 1:n.chunks) {
       }
       temp1   = temp1  [mask]
       precip1 = precip1[mask]
+
+      ## Fit model
+      rq0 = try(rq(log(precip1) ~ temp1, 
+                   tau = opts$quantile, iid = opts$iid), TRUE)
+      if (class(rq0) == "try-error")
+        next
+      coef[k,l,] = rq0$coefficients
       
       if (opts$method == "Wald") {
         
-        ## Fit model
-        rq0 = try(rq(log(precip1) ~ temp1, 
-                     tau = opts$quantile, iid = opts$iid), TRUE)
-        if (class(rq0) == "try-error")
-          next
-        rq0.summary = try(summary(qrm, se = ifelse(opts$iid, "iid", "nid"), 
+        rq0.summary = try(summary(rq0, se = ifelse(opts$iid, "iid", "nid"), 
                                   covariance = TRUE), TRUE)
         if (class(rq0.summary) == "try-error")
           next
         
-      } else {
+        ## Store results
+        cov [k,l,,] = rq0.summary$cov
+        df  [k,l  ] = rq0.summary$rdf
         
-        ## Fit model
-        rq0 = try(rq(log(precip1) ~ temp1, 
-                     tau = opts$quantile, iid = opts$iid), TRUE)
-        if (class(rq0) == "try-error")
-          next
-        rq0.summary = try(summary(qrm, se = "rank", 
+      } else if (opts$method == "Rank") {
+        
+        rq0.summary = try(summary(rq0, se = "rank", 
                                   alpha = 1 - opts$level, iid = opts$iid), TRUE)
         if (class(rq0.summary) == "try-error")
           next
-        coefs = 100*(exp(qrm.summary$coefficients[2,]) - 1)
-        
+
         ## Store results
-        beta [k,l] = coefs[1]
-        lower[k,l] = coefs[2]
-        upper[k,l] = coefs[3]
+        lower[k,l,] = rq0.summary$coefficients[,2]
+        upper[k,l,] = rq0.summary$coefficients[,3]
       
       } 
       
@@ -427,32 +433,61 @@ for (i in 1:n.chunks) {
   
   ## Transform data
   if (fliplon) {
-    beta  = lonflip(beta , lon0)$x
-    lower = lonflip(lower, lon0)$x
-    upper = lonflip(upper, lon0)$x
+    coef  = lonflip(coef , lon0)$x
+    if (opts$method == "Wald") {
+      cov   = lonflip(cov  , lon0)$x
+      df    = lonflip(df   , lon0)$x
+    } else if (opts$method == "Rank") {
+      lower = lonflip(lower, lon0)$x
+      upper = lonflip(upper, lon0)$x
+    }
   }
   if (fliplat & count > 1) {
-    beta  = invertlat(beta )
-    lower = invertlat(lower)
-    upper = invertlat(upper)
+    coef  = invertlat(coef )
+    if (opts$method == "Wald") {
+      cov   = invertlat(cov)
+      df    = invertlat(df )
+    } else if (opts$method == "Rank") {
+      lower = invertlat(lower)
+      upper = invertlat(upper)
+    }
   }
   
   ## Write data
   print(paste("Writing chunk",i,"of",n.chunks))
   if (fliplat) {
-    ncvar_put(nco, "beta" , beta , 
-              start = c(1,ny - start - count + 2), count = c(nx,count))
-    ncvar_put(nco, "lower", lower, 
-              start = c(1,ny - start - count + 2), count = c(nx,count))
-    ncvar_put(nco, "upper", upper, 
-              start = c(1,ny - start - count + 2), count = c(nx,count))
+    ncvar_put(nco, "coefficients", coef, 
+              start = c(1,ny - start - count + 2,1), 
+              count = c(nx,count,npar))
+    if (opts$method == "Wald") {
+      ncvar_put(nco, "covariance", cov, 
+                start = c(1,ny - start - count + 2,1,1), 
+                count = c(nx,count,npar,npar))
+      ncvar_put(nco, "df", df, 
+                start = c(1,ny - start - count + 2),
+                count = c(nx,count))
+    } else if (opts$method == "Rank") {
+      ncvar_put(nco, "lower", lower, 
+                start = c(1,ny - start - count + 2,1), 
+                count = c(nx,count,npar))
+      ncvar_put(nco, "upper", upper, 
+                start = c(1,ny - start - count + 2,1),
+                count = c(nx,count,npar))
+    }
   } else {
-    ncvar_put(nco, "beta" , beta , 
-              start = c(1,start), count = c(nx,count))
-    ncvar_put(nco, "lower", lower, 
-              start = c(1,start), count = c(nx,count))
-    ncvar_put(nco, "upper", upper, 
-              start = c(1,start), count = c(nx,count))
+    ncvar_put(nco, "coefficients", coef, 
+              start = c(1,start,1), count = c(nx,count,npar))
+    if (opts$method == "Wald") {
+      ncvar_put(nco, "covariance", cov, 
+                start = c(1,start,1,1), count = c(nx,count,npar,npar))
+      ncvar_put(nco, "df", df, 
+                start = c(1,start), count = c(nx,count))
+    } else if (opts$method == "Rank") {
+      ncvar_put(nco, "lower", lower, 
+                start = c(1,start,1), count = c(nx,count,npar))
+      ncvar_put(nco, "upper", upper, 
+                start = c(1,start,1), count = c(nx,count,npar))
+    }
   }
 
 } ## i
