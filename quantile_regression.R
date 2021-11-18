@@ -136,11 +136,27 @@ temp.units = nc$var[[1]]$units
 temp.longname = nc$var[[1]]$longname
 nc_close(nc)
 
+## Precipitation
 nc = nc_open(plist[1])
 precip.name  = nc$var[[1]]$name
 precip.units = nc$var[[1]]$units
 precip.longname = nc$var[[1]]$longname
 nc_close(nc)
+
+## Mask levels
+if (exists("mask", opts)) {
+  nc = nc_open(mlist[1])
+  levels = ncatt_get(nc, names(nc$var)[1], "flag_values")
+  labels = ncatt_get(nc, names(nc$var)[1], "flag_meanings")
+  if (levels$hasatt & labels$hasatt) {
+    flags = TRUE
+    levels = levels$value
+    labels = strsplit(labels$value, " ")[[1]]
+    nlevels = length(levels)
+  } else {
+    flags = FALSE
+  }
+}
 
 if (precip.units %in% c("mm","cm","m")) {
   intercept.units = "ln(mm)"
@@ -189,14 +205,20 @@ if (fliplat) {
   chunks$count = rev(chunks$count)
 }
 
+## Parameter names
+if (flags) {
+  npar = 2*nlevels
+  par.names = c("Intercept",labels[2:nlevels],
+                temp.name,paste0(temp.name,":",labels[2:nlevels]))
+} else {
+  npar = 2
+  par.names = c("Intercept",temp.name)
+}
+nchar = max(nchar(par.names))
+
 ## Define dimensions
 lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
 lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude")
-
-## Define dimensions
-npar = 2
-par.names = c("Intercept","Slope")
-nchar = max(nchar(par.names))
 par.dim  = ncdim_def("par"  , "", 1:npar , create_dimvar = FALSE)
 char.dim = ncdim_def("nchar", "", 1:nchar, create_dimvar = FALSE)
 
@@ -336,10 +358,13 @@ for (i in 1:n.chunks) {
     
     if (exists("mask", opts)) {
       buffer = ncvar_get(ncm, start = c(1,start,1), count = c(nx,count,ntj))
-      # mask0[,,mask] = !is.na(buffer) & buffer > 0
-      mask0[,,mask] = buffer
+      if (flags) {
+        mask0[,,mask] = buffer
+      } else {
+        mask0[,,mask] = !is.na(buffer) & buffer > 0
+      }
     }    
-
+    
     ## Close connections
     nc_close(nct)
     nc_close(ncp)
@@ -388,39 +413,103 @@ for (i in 1:n.chunks) {
       mask    = !is.na(precip1)
       if (exists("mask", opts)) {
         mask1 = mask0  [k,l,]
-        mask  = mask & mask1
+        if (flags) {
+          mask1 = mask1[mask]
+          mask1 = factor(mask1, levels, labels)
+        } else {
+          mask  = mask & mask1
+        }
       }
       temp1   = temp1  [mask]
       precip1 = precip1[mask]
 
       ## Fit model
-      rq0 = try(rq(log(precip1) ~ temp1, 
-                   tau = opts$quantile, iid = opts$iid), TRUE)
-      if (class(rq0) == "try-error")
-        next
-      coef[k,l,] = rq0$coefficients
+      if (flags) {
+        
+        rq0 = try(rq(log(precip1) ~ mask1 + temp1, 
+                     tau = opts$quantile), TRUE)
+        if (class(rq0) == "try-error")
+          next
+        rq1 = try(rq(log(precip1) ~ mask1 + temp1 + mask1:temp1, 
+                     tau = opts$quantile), TRUE)
+        if (class(rq1) == "try-error")
+          next
+        
+      } else {
+        
+        rq1 = try(rq(log(precip1) ~ temp1, 
+                     tau = opts$quantile, iid = opts$iid), TRUE)
+        if (class(rq1) == "try-error")
+          next
+
+      }
+      coefficients = rq1$coefficients
+      
+      ## Check that all levels populated
+      if (length(coefficients) < npar) {
+        
+        buffer = coefficients
+        coefficients = rep(NA, npar)
+        missing = which(! labels %in% rq1$xlevels$mask1)
+        slice = rep(TRUE, npar)
+        slice[c(missing,npar/2+missing)] = FALSE
+        coefficients[slice] = buffer
+        
+      }
+      
+      ## Store coefficients
+      coef[k,l,] = coefficients
       
       if (opts$method == "Wald") {
         
-        rq0.summary = try(summary(rq0, se = ifelse(opts$iid, "iid", "nid"), 
+        rq1.summary = try(summary(rq1, se = ifelse(opts$iid, "iid", "nid"), 
                                   covariance = TRUE), TRUE)
-        if (class(rq0.summary) == "try-error")
+        if (class(rq1.summary) == "try-error")
           next
         
+        covariance = rq1.summary$cov
+        
+        ## Check that all levels populated
+        if (nrow(covariance) < npar) {
+          
+          buffer = covariance
+          covariance = matrix(NA, npar, npar)
+          missing = which(! labels %in% rq1$xlevels$mask1)
+          slice = matrix(TRUE, npar, npar)
+          slice[c(missing,npar/2+missing),] = FALSE
+          slice[,c(missing,npar/2+missing)] = FALSE
+          covariance[slice] = buffer
+
+        }
+        
         ## Store results
-        cov [k,l,,] = rq0.summary$cov
-        df  [k,l  ] = rq0.summary$rdf
+        cov[k,l,,] = covariance
+        df [k,l  ] = rq1.summary$rdf
         
       } else if (opts$method == "Rank") {
         
-        rq0.summary = try(summary(rq0, se = "rank", 
+        rq1.summary = try(summary(rq1, se = "rank", 
                                   alpha = 1 - opts$level, iid = opts$iid), TRUE)
-        if (class(rq0.summary) == "try-error")
+        if (class(rq1.summary) == "try-error")
           next
 
+        bounds = rq1.summary$coefficients[,2:3]
+        
+        ## Check that all levels populated
+        if (nrow(bounds) < npar) {
+
+          buffer = bounds
+          bounds = matrix(NA, npar, 2)
+          missing = which(! labels %in% rq1$xlevels$mask1)
+          slice = matrix(TRUE, npar, 2)
+          slice[c(missing,npar/2+missing),] = FALSE
+          bounds[slice] = buffer
+          
+        }
+        
         ## Store results
-        lower[k,l,] = rq0.summary$coefficients[,2]
-        upper[k,l,] = rq0.summary$coefficients[,3]
+        lower[k,l,] = bounds[,1]
+        upper[k,l,] = bounds[,2]
       
       } 
       
