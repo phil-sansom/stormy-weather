@@ -264,6 +264,23 @@ if (opts$method == "Wald") {
   
 }
 
+if (flags) {
+  
+  ## Define dimensions
+  level.dim  = ncdim_def("lev", "", 1:nlevels , create_dimvar = FALSE)
+
+  ## Define variables
+  level.var  = ncvar_def("level", "", list(char.dim,level.dim),
+                       longname = "Parameter", prec = "char")
+  count.var = ncvar_def("counts", "", list(lon.dim,lat.dim,level.dim),
+                        missval = -2147483647L,
+                        longname = "Counts", 
+                        prec = "integer",
+                        compression = opts$compression)
+  vars = c(vars, list(level.var, count.var))
+  
+}
+
 ## Create netCDF file
 nco = nc_create(args[3], vars)
 
@@ -296,6 +313,10 @@ if (opts$method == "Wald") {
   ncatt_put(nco, "lower", "coordinates", "parameter")
   ncatt_put(nco, "upper", "coordinates", "parameter")
 }
+if (flags) {
+  ncvar_put(nco, "level", labels)
+  ncatt_put(nco, "counts", "coordinates", "level")
+}
 
 ## Transform threshold
 if (! precip.units %in% c("mm","cm","m"))
@@ -315,6 +336,9 @@ for (i in 1:n.chunks) {
   precip0 = array(NA, c(nx,count,nt))
   if (exists("mask", opts))
     mask0 = array(NA, c(nx,count,nt))
+  if (flags) {
+    counts = array(NA, c(nx,count,nlevels))
+  }
   coef = array(NA, c(nx,count,npar))
   if (opts$method == "Wald") {
     cov   = array(NA, c(nx,count,npar,npar))
@@ -425,6 +449,8 @@ for (i in 1:n.chunks) {
 
       ## Fit model
       if (flags) {
+
+        counts[k,l,] = as.numeric(table(mask1))
         
         rq0 = try(rq(log(precip1) ~ mask1 + temp1, 
                      tau = opts$quantile), TRUE)
@@ -434,6 +460,7 @@ for (i in 1:n.chunks) {
                      tau = opts$quantile), TRUE)
         if (class(rq1) == "try-error")
           next
+        
         
       } else {
         
@@ -530,6 +557,9 @@ for (i in 1:n.chunks) {
       lower = lonflip(lower, lon0)$x
       upper = lonflip(upper, lon0)$x
     }
+    if (flags) {
+      counts = lonflip(counts, lon0)$x
+    }
   }
   if (fliplat & count > 1) {
     coef  = invertlat(coef )
@@ -539,6 +569,9 @@ for (i in 1:n.chunks) {
     } else if (opts$method == "Rank") {
       lower = invertlat(lower)
       upper = invertlat(upper)
+    }
+    if (flags) {
+      counts = invertlat(counts)
     }
   }
   
@@ -563,6 +596,11 @@ for (i in 1:n.chunks) {
                 start = c(1,ny - start - count + 2,1),
                 count = c(nx,count,npar))
     }
+    if (flags) {
+      ncvar_put(nco, "counts", counts, 
+                start = c(1,ny - start - count + 2,1), 
+                count = c(nx,count,nlevels))
+    }
   } else {
     ncvar_put(nco, "coefficients", coef, 
               start = c(1,start,1), count = c(nx,count,npar))
@@ -576,6 +614,11 @@ for (i in 1:n.chunks) {
                 start = c(1,start,1), count = c(nx,count,npar))
       ncvar_put(nco, "upper", upper, 
                 start = c(1,start,1), count = c(nx,count,npar))
+    }
+    if (flags) {
+      ncvar_put(nco, "counts", counts, 
+                start = c(1,start,1), 
+                count = c(nx,count,nlevels))
     }
   }
 
