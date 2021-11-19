@@ -21,7 +21,7 @@ option_list = list(
               help = "Threshold for wet days (mm) [default: 0.1]",
               default = 0.1),
   make_option(c("--method","-m"), action = "store", type = "character",
-              help = "Method of inference (Wald or Rank) [default: Wald]",
+              help = "Method of inference (Wald or rank) [default: Wald]",
               default = "Wald"),
   make_option(c("--nid","-n"), action = "store_false", type = "logical",
               help = "Not independent and identically distributed",
@@ -48,8 +48,8 @@ argv = parse_args(parser, positional_arguments = 3)
 opts = argv$options
 args = argv$args
 smoothing = opts$smoothing
-if (!opts$method %in% c("Wald","Rank"))
-  stop("Method should be either Wald or Rank")
+if (!opts$method %in% c("Wald","rank"))
+  stop("Method should be either Wald or rank")
 if (opts$compression == 0)
   opts$compression = NA
 
@@ -146,8 +146,9 @@ nc_close(nc)
 ## Mask levels
 if (exists("mask", opts)) {
   nc = nc_open(mlist[1])
-  levels = ncatt_get(nc, names(nc$var)[1], "flag_values")
-  labels = ncatt_get(nc, names(nc$var)[1], "flag_meanings")
+  mask.name = nc$var[[1]]$name
+  levels = ncatt_get(nc, mask.name, "flag_values")
+  labels = ncatt_get(nc, mask.name, "flag_meanings")
   if (levels$hasatt & labels$hasatt) {
     flags = TRUE
     levels = levels$value
@@ -247,7 +248,7 @@ if (opts$method == "Wald") {
                       compression = opts$compression)
   vars = c(vars, list(cov.var, df.var))
   
-} else if (opts$method == "Rank") {
+} else if (opts$method == "rank") {
 
   ## Define variables
   lwr.var = ncvar_def("lower", "", list(lon.dim,lat.dim,par.dim),
@@ -267,19 +268,27 @@ if (opts$method == "Wald") {
 if (flags) {
   
   ## Define dimensions
-  level.dim  = ncdim_def("lev", "", 1:nlevels , create_dimvar = FALSE)
+  level.dim = ncdim_def("lev" , "", 1:nlevels, create_dimvar = FALSE)
+  test.dim  = ncdim_def("test", "", 1:3      , create_dimvar = FALSE)
 
   ## Define variables
-  level.var  = ncvar_def("level", "", list(char.dim,level.dim),
-                       longname = "Parameter", prec = "char")
+  level.var = ncvar_def("level", "", list(char.dim,level.dim),
+                        longname = "Level", prec = "char")
+  test.var  = ncvar_def("ftest", "", list(char.dim,test.dim),
+                        longname = "F-test", prec = "char")
   count.var = ncvar_def("counts", "", list(lon.dim,lat.dim,level.dim),
                         missval = -2147483647L,
                         longname = "Counts", 
                         prec = "integer",
                         compression = opts$compression)
-  vars = c(vars, list(level.var, count.var))
+  pval.var = ncvar_def("pvalue", "", list(lon.dim,lat.dim,test.dim),
+                       missval = 9.9692099683868690e+36,
+                       longname = "p-value", 
+                       prec = "double",
+                       compression = opts$compression)
+  vars = c(vars, list(level.var, test.var, count.var, pval.var))
   
-}
+} ## flags
 
 ## Create netCDF file
 nco = nc_create(args[3], vars)
@@ -301,7 +310,7 @@ ncatt_put(nco, 0, "smoothing", opts$smoothing, prec = "integer")
 ncatt_put(nco, 0, "threshold", opts$threshold, prec = "double" )
 ncatt_put(nco, 0, "method"   , opts$method   , prec = "text"   )
 ncatt_put(nco, 0, "iid"      , opts$iid      , prec = "integer")
-if (opts$method == "Rank")
+if (opts$method == "rank")
   ncatt_put(nco, 0, "level", opts$level, prec = "double")
 
 ## Write auxiliary coordinate variable
@@ -309,13 +318,15 @@ ncvar_put(nco, "parameter", par.names)
 ncatt_put(nco, "coefficients", "coordinates", "parameter")
 if (opts$method == "Wald") {
   ncatt_put(nco, "covariance", "coordinates", "parameter parameter")
-} else if (opts$method == "Rank") {
+} else if (opts$method == "rank") {
   ncatt_put(nco, "lower", "coordinates", "parameter")
   ncatt_put(nco, "upper", "coordinates", "parameter")
 }
 if (flags) {
   ncvar_put(nco, "level", labels)
+  ncvar_put(nco, "ftest", c(mask.name,temp.name,"interaction"))
   ncatt_put(nco, "counts", "coordinates", "level")
+  ncatt_put(nco, "pvalue", "coordinates", "ftest")
 }
 
 ## Transform threshold
@@ -337,13 +348,14 @@ for (i in 1:n.chunks) {
   if (exists("mask", opts))
     mask0 = array(NA, c(nx,count,nt))
   if (flags) {
-    counts = array(NA, c(nx,count,nlevels))
+    counts  = array(NA, c(nx,count,nlevels))
+    pvalues = array(NA, c(nx,count,3))
   }
   coef = array(NA, c(nx,count,npar))
   if (opts$method == "Wald") {
     cov   = array(NA, c(nx,count,npar,npar))
     df    = array(NA, c(nx,count))
-  } else if (opts$method == "Rank") {
+  } else if (opts$method == "rank") {
     lower = array(NA, c(nx,count,npar))
     upper = array(NA, c(nx,count,npar))
   }
@@ -452,32 +464,70 @@ for (i in 1:n.chunks) {
 
         counts[k,l,] = as.numeric(table(mask1))
         
-        rq0 = try(rq(log(precip1) ~ mask1 + temp1, 
+        rqm = try(rq(log(precip1) ~ mask1 + temp1 + mask1:temp1, 
                      tau = opts$quantile), TRUE)
-        if (class(rq0) == "try-error")
-          next
-        rq1 = try(rq(log(precip1) ~ mask1 + temp1 + mask1:temp1, 
-                     tau = opts$quantile), TRUE)
-        if (class(rq1) == "try-error")
-          next
-        
         
       } else {
         
-        rq1 = try(rq(log(precip1) ~ temp1, 
+        rqm = try(rq(log(precip1) ~ temp1, 
                      tau = opts$quantile, iid = opts$iid), TRUE)
+
+      } ## flags
+      if (class(rqm) == "try-error")
+        next
+      
+      ## Model summary
+      if (opts$method == "Wald") {
+        
+        rqm.summary = try(summary(rqm, se = ifelse(opts$iid, "iid", "nid"), 
+                                  covariance = TRUE), TRUE)
+        
+      } else if (opts$method == "rank") {
+        
+        rqm.summary = try(summary(rqm, se = "rank", alpha = 1 - opts$level, 
+                                  iid = opts$iid), TRUE)
+        
+      } ## method
+      if (class(rqm.summary) == "try-error")
+        next
+      
+      ## Analysis of deviance
+      if (flags) {
+        
+        ## Fit simpler models for comparison
+        rq0 = try(rq(log(precip1) ~ 1,
+                     tau = opts$quantile), TRUE)
+        if (class(rq0) == "try-error")
+          next
+        rq1 = try(rq(log(precip1) ~ mask1,
+                     tau = opts$quantile), TRUE)
         if (class(rq1) == "try-error")
           next
+        rq2 = try(rq(log(precip1) ~ mask1 + temp1, 
+                     tau = opts$quantile), TRUE)
+        if (class(rq2) == "try-error")
+          next
+        
+        ## Compute analysis of deviance
+        aod = try(anova(rqm, rq2, rq1, rq0, test = opts$method, 
+                    se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), TRUE)
+        if (class(aod) == "try-error")
+          next
 
-      }
-      coefficients = rq1$coefficients
+        ## Store p-values
+        pvalues[k,l,] = rev(aod$table[,4])
+        
+      } ## flags
+      
+      ## Extract coefficients
+      coefficients = rqm$coefficients
       
       ## Check that all levels populated
       if (length(coefficients) < npar) {
         
         buffer = coefficients
         coefficients = rep(NA, npar)
-        missing = which(! labels %in% rq1$xlevels$mask1)
+        missing = which(! labels %in% rqm$xlevels$mask1)
         slice = rep(TRUE, npar)
         slice[c(missing,npar/2+missing)] = FALSE
         coefficients[slice] = buffer
@@ -486,22 +536,18 @@ for (i in 1:n.chunks) {
       
       ## Store coefficients
       coef[k,l,] = coefficients
-      
+
       if (opts$method == "Wald") {
         
-        rq1.summary = try(summary(rq1, se = ifelse(opts$iid, "iid", "nid"), 
-                                  covariance = TRUE), TRUE)
-        if (class(rq1.summary) == "try-error")
-          next
-        
-        covariance = rq1.summary$cov
+        ## Extract covariance
+        covariance = rqm.summary$cov
         
         ## Check that all levels populated
         if (nrow(covariance) < npar) {
           
           buffer = covariance
           covariance = matrix(NA, npar, npar)
-          missing = which(! labels %in% rq1$xlevels$mask1)
+          missing = which(! labels %in% rqm$xlevels$mask1)
           slice = matrix(TRUE, npar, npar)
           slice[c(missing,npar/2+missing),] = FALSE
           slice[,c(missing,npar/2+missing)] = FALSE
@@ -511,23 +557,19 @@ for (i in 1:n.chunks) {
         
         ## Store results
         cov[k,l,,] = covariance
-        df [k,l  ] = rq1.summary$rdf
+        df [k,l  ] = rqm.summary$rdf
         
-      } else if (opts$method == "Rank") {
+      } else if (opts$method == "rank") {
         
-        rq1.summary = try(summary(rq1, se = "rank", 
-                                  alpha = 1 - opts$level, iid = opts$iid), TRUE)
-        if (class(rq1.summary) == "try-error")
-          next
-
-        bounds = rq1.summary$coefficients[,2:3]
+        ## Extract bounds
+        bounds = rqm.summary$coefficients[,2:3]
         
         ## Check that all levels populated
         if (nrow(bounds) < npar) {
 
           buffer = bounds
           bounds = matrix(NA, npar, 2)
-          missing = which(! labels %in% rq1$xlevels$mask1)
+          missing = which(! labels %in% rqm$xlevels$mask1)
           slice = matrix(TRUE, npar, 2)
           slice[c(missing,npar/2+missing),] = FALSE
           bounds[slice] = buffer
@@ -538,7 +580,8 @@ for (i in 1:n.chunks) {
         lower[k,l,] = bounds[,1]
         upper[k,l,] = bounds[,2]
       
-      } 
+      }
+      
       
     } ## l
   } ## k
@@ -553,7 +596,7 @@ for (i in 1:n.chunks) {
     if (opts$method == "Wald") {
       cov   = lonflip(cov  , lon0)$x
       df    = lonflip(df   , lon0)$x
-    } else if (opts$method == "Rank") {
+    } else if (opts$method == "rank") {
       lower = lonflip(lower, lon0)$x
       upper = lonflip(upper, lon0)$x
     }
@@ -566,7 +609,7 @@ for (i in 1:n.chunks) {
     if (opts$method == "Wald") {
       cov   = invertlat(cov)
       df    = invertlat(df )
-    } else if (opts$method == "Rank") {
+    } else if (opts$method == "rank") {
       lower = invertlat(lower)
       upper = invertlat(upper)
     }
@@ -588,7 +631,7 @@ for (i in 1:n.chunks) {
       ncvar_put(nco, "df", df, 
                 start = c(1,ny - start - count + 2),
                 count = c(nx,count))
-    } else if (opts$method == "Rank") {
+    } else if (opts$method == "rank") {
       ncvar_put(nco, "lower", lower, 
                 start = c(1,ny - start - count + 2,1), 
                 count = c(nx,count,npar))
@@ -609,7 +652,7 @@ for (i in 1:n.chunks) {
                 start = c(1,start,1,1), count = c(nx,count,npar,npar))
       ncvar_put(nco, "df", df, 
                 start = c(1,start), count = c(nx,count))
-    } else if (opts$method == "Rank") {
+    } else if (opts$method == "rank") {
       ncvar_put(nco, "lower", lower, 
                 start = c(1,start,1), count = c(nx,count,npar))
       ncvar_put(nco, "upper", upper, 
