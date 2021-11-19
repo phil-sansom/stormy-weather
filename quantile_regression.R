@@ -221,7 +221,7 @@ if (flags) {
   npar = 2
   par.names = c("Intercept",temp.name)
 } ## flags
-nchar = max(nchar(par.names),tests)
+nchar = max(nchar(par.names),nchar(tests))
 
 ## Define dimensions
 lon.dim   = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
