@@ -144,6 +144,8 @@ precip.longname = nc$var[[1]]$longname
 nc_close(nc)
 
 ## Mask levels
+flags = FALSE
+tests = temp.name
 if (exists("mask", opts)) {
   nc = nc_open(mlist[1])
   mask.name = nc$var[[1]]$name
@@ -153,11 +155,15 @@ if (exists("mask", opts)) {
     flags = TRUE
     levels = levels$value
     labels = strsplit(labels$value, " ")[[1]]
-    nlevels = length(levels)
+    tests = c(mask.name,temp.name,"interaction")
   } else {
-    flags = FALSE
+    labels = mask.name
   }
-}
+} else {
+  labels = temp.name
+} ## mask
+ntests  = length(tests)
+nlevels = length(labels)
 
 if (precip.units %in% c("mm","cm","m")) {
   intercept.units = "ln(mm)"
@@ -179,7 +185,7 @@ if (fliplon) {
   lon = lonflip(matrix(0, length(lon0), length(lat0)), lon0)$lon 
 } else {
   lon = lon0
-}
+} ## fliplon
 lat = if (fliplat) rev(lat0) else lat0
 
 ## Split into chunks
@@ -187,7 +193,7 @@ if (exists("mask", opts)) {
   nd = 3
 } else {
   nd = 2
-}
+} ## mask
 if (exists("memory", opts)) {
   row.size   = nx*nt*8/1024/1024
   chunk.size = floor(opts$memory/row.size/nd)
@@ -195,7 +201,7 @@ if (exists("memory", opts)) {
 } else {
   chunk.size = ny
   n.chunks = 1
-}
+} ## memory
 chunks = data.frame(
   start = seq(0, n.chunks - 1, 1)*chunk.size + 1,
   count = rep(chunk.size, n.chunks)
@@ -204,7 +210,7 @@ chunks$count[n.chunks] = ny - (n.chunks - 1)*chunk.size
 if (fliplat) {
   chunks$start = rev(chunks$start)
   chunks$count = rev(chunks$count)
-}
+} ## fliplat
 
 ## Parameter names
 if (flags) {
@@ -214,24 +220,40 @@ if (flags) {
 } else {
   npar = 2
   par.names = c("Intercept",temp.name)
-}
-nchar = max(nchar(par.names))
+} ## flags
+nchar = max(nchar(par.names),tests)
 
 ## Define dimensions
-lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
-lat.dim  = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude")
-par.dim  = ncdim_def("par"  , "", 1:npar , create_dimvar = FALSE)
-char.dim = ncdim_def("nchar", "", 1:nchar, create_dimvar = FALSE)
+lon.dim   = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
+lat.dim   = ncdim_def("latitude" , "degrees_north", lat, longname = "Latitude")
+par.dim   = ncdim_def("par"  , "", 1:npar   , create_dimvar = FALSE)
+level.dim = ncdim_def("lev"  , "", 1:nlevels, create_dimvar = FALSE)
+test.dim  = ncdim_def("test" , "", 1:ntests , create_dimvar = FALSE)
+char.dim  = ncdim_def("nchar", "", 1:nchar  , create_dimvar = FALSE)
 
 ## Define variables
-par.var  = ncvar_def("parameter", "", list(char.dim,par.dim),
-                     longname = "Parameter", prec = "char")
+level.var = ncvar_def("level", "", list(char.dim,level.dim),
+                      longname = "Level", prec = "char")
+par.var   = ncvar_def("parameter", "", list(char.dim,par.dim),
+                      longname = "Parameter", prec = "char")
+test.var  = ncvar_def("ftest", "", list(char.dim,test.dim),
+                      longname = "F-test", prec = "char")
+count.var = ncvar_def("counts", "", list(lon.dim,lat.dim,level.dim),
+                      missval = -2147483647L,
+                      longname = "Counts", 
+                      prec = "integer",
+                      compression = opts$compression)
+pval.var = ncvar_def("pvalue", "", list(lon.dim,lat.dim,test.dim),
+                     missval = 9.9692099683868690e+36,
+                     longname = "p-value", 
+                     prec = "double",
+                     compression = opts$compression)
 coef.var = ncvar_def("coefficients", "", list(lon.dim,lat.dim,par.dim),
                      missval = 9.9692099683868690e+36,
                      longname = "Coefficients", 
                      prec = "double",
                      compression = opts$compression)
-vars = list(par.var,coef.var)
+vars = list(level.var,par.var,test.var,count.var,pval.var,coef.var)
 
 if (opts$method == "Wald") {
 
@@ -265,31 +287,6 @@ if (opts$method == "Wald") {
   
 }
 
-if (flags) {
-  
-  ## Define dimensions
-  level.dim = ncdim_def("lev" , "", 1:nlevels, create_dimvar = FALSE)
-  test.dim  = ncdim_def("test", "", 1:3      , create_dimvar = FALSE)
-
-  ## Define variables
-  level.var = ncvar_def("level", "", list(char.dim,level.dim),
-                        longname = "Level", prec = "char")
-  test.var  = ncvar_def("ftest", "", list(char.dim,test.dim),
-                        longname = "F-test", prec = "char")
-  count.var = ncvar_def("counts", "", list(lon.dim,lat.dim,level.dim),
-                        missval = -2147483647L,
-                        longname = "Counts", 
-                        prec = "integer",
-                        compression = opts$compression)
-  pval.var = ncvar_def("pvalue", "", list(lon.dim,lat.dim,test.dim),
-                       missval = 9.9692099683868690e+36,
-                       longname = "p-value", 
-                       prec = "double",
-                       compression = opts$compression)
-  vars = c(vars, list(level.var, test.var, count.var, pval.var))
-  
-} ## flags
-
 ## Create netCDF file
 nco = nc_create(args[3], vars)
 
@@ -322,20 +319,19 @@ if (opts$method == "Wald") {
   ncatt_put(nco, "lower", "coordinates", "parameter")
   ncatt_put(nco, "upper", "coordinates", "parameter")
 }
-if (flags) {
-  ncvar_put(nco, "level", labels)
-  ncvar_put(nco, "ftest", c(mask.name,temp.name,"interaction"))
-  ncatt_put(nco, "counts", "coordinates", "level")
-  ncatt_put(nco, "pvalue", "coordinates", "ftest")
-}
+ncvar_put(nco, "level", labels)
+ncvar_put(nco, "ftest", tests )
+ncatt_put(nco, "counts", "coordinates", "level")
+ncatt_put(nco, "pvalue", "coordinates", "ftest")
 
 ## Transform threshold
-if (! precip.units %in% c("mm","cm","m"))
-  warning("Precip units not recognised (mm,cm,m), specify threshold in native units")
-if (precip.units == "cm")
-  opts$threshold = opts$threshold/10
-if (precip.units == "m")
+if (precip.units == "m") {
   opts$threshold = opts$threshold/1000
+} else if (precip.units == "cm") {
+  opts$threshold = opts$threshold/10
+} else if (! precip.units == "mm") {
+  warning("Precip units not recognised (mm,cm,m), specify threshold in native units")
+} ## precip.units
 
 ## Loop over chunks
 for (i in 1:n.chunks) {
@@ -347,10 +343,8 @@ for (i in 1:n.chunks) {
   precip0 = array(NA, c(nx,count,nt))
   if (exists("mask", opts))
     mask0 = array(NA, c(nx,count,nt))
-  if (flags) {
-    counts  = array(NA, c(nx,count,nlevels))
-    pvalues = array(NA, c(nx,count,3))
-  }
+  counts  = array(NA, c(nx,count,nlevels))
+  pvalues = array(NA, c(nx,count,ntests))
   coef = array(NA, c(nx,count,npar))
   if (opts$method == "Wald") {
     cov   = array(NA, c(nx,count,npar,npar))
@@ -462,17 +456,18 @@ for (i in 1:n.chunks) {
       ## Fit model
       if (flags) {
 
-        counts[k,l,] = as.numeric(table(mask1))
-        
+        countskl = as.numeric(table(mask1))
         rqm = try(rq(log(precip1) ~ mask1 + temp1 + mask1:temp1, 
                      tau = opts$quantile), TRUE)
         
       } else {
         
+        countskl = length(temp1)
         rqm = try(rq(log(precip1) ~ temp1, 
                      tau = opts$quantile, iid = opts$iid), TRUE)
 
       } ## flags
+      counts[k,l,] = countskl
       if (class(rqm) == "try-error")
         next
       
@@ -491,14 +486,15 @@ for (i in 1:n.chunks) {
       if (class(rqm.summary) == "try-error")
         next
       
+      ## Fit null model
+      rq0 = try(rq(log(precip1) ~ 1, tau = opts$quantile), TRUE)
+      if (class(rq0) == "try-error")
+        next
+      
       ## Analysis of deviance
       if (flags) {
         
         ## Fit simpler models for comparison
-        rq0 = try(rq(log(precip1) ~ 1,
-                     tau = opts$quantile), TRUE)
-        if (class(rq0) == "try-error")
-          next
         rq1 = try(rq(log(precip1) ~ mask1,
                      tau = opts$quantile), TRUE)
         if (class(rq1) == "try-error")
@@ -510,14 +506,22 @@ for (i in 1:n.chunks) {
         
         ## Compute analysis of deviance
         aod = try(anova(rqm, rq2, rq1, rq0, test = opts$method, 
-                    se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), TRUE)
-        if (class(aod) == "try-error")
-          next
-
-        ## Store p-values
-        pvalues[k,l,] = rev(aod$table[,4])
+                        se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), 
+                  TRUE)
         
+      } else {
+        
+        ## Compute analysis of deviance
+        aod = try(anova(rqm, rq0, test = opts$method, 
+                        se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), 
+                  TRUE)
+
       } ## flags
+      if (class(aod) == "try-error")
+        next
+      
+      ## Store p-values
+      pvalues[k,l,] = rev(aod$table[,4])
       
       ## Extract coefficients
       coefficients = rqm$coefficients
@@ -580,8 +584,7 @@ for (i in 1:n.chunks) {
         lower[k,l,] = bounds[,1]
         upper[k,l,] = bounds[,2]
       
-      }
-      
+      } ## method
       
     } ## l
   } ## k
@@ -592,35 +595,39 @@ for (i in 1:n.chunks) {
   
   ## Transform data
   if (fliplon) {
-    coef  = lonflip(coef , lon0)$x
+    counts  = lonflip(counts , lon0)$x
+    pvalues = lonflip(pvalues, lon0)$x
+    coef    = lonflip(coef   , lon0)$x
     if (opts$method == "Wald") {
       cov   = lonflip(cov  , lon0)$x
       df    = lonflip(df   , lon0)$x
     } else if (opts$method == "rank") {
       lower = lonflip(lower, lon0)$x
       upper = lonflip(upper, lon0)$x
-    }
-    if (flags) {
-      counts = lonflip(counts, lon0)$x
-    }
-  }
+    } ## method
+  } ## fliplon
   if (fliplat & count > 1) {
-    coef  = invertlat(coef )
+    counts  = invertlat(counts)
+    pvalues = invertlat(pvalues)
+    coef    = invertlat(coef )
     if (opts$method == "Wald") {
       cov   = invertlat(cov)
       df    = invertlat(df )
     } else if (opts$method == "rank") {
       lower = invertlat(lower)
       upper = invertlat(upper)
-    }
-    if (flags) {
-      counts = invertlat(counts)
-    }
-  }
+    } ## method
+  } ## fliplat
   
   ## Write data
   print(paste("Writing chunk",i,"of",n.chunks))
   if (fliplat) {
+    ncvar_put(nco, "counts", counts, 
+              start = c(1,ny - start - count + 2,1), 
+              count = c(nx,count,nlevels))
+    ncvar_put(nco, "pvalue", pvalues, 
+              start = c(1,ny - start - count + 2,1), 
+              count = c(nx,count,ntests))
     ncvar_put(nco, "coefficients", coef, 
               start = c(1,ny - start - count + 2,1), 
               count = c(nx,count,npar))
@@ -639,12 +646,11 @@ for (i in 1:n.chunks) {
                 start = c(1,ny - start - count + 2,1),
                 count = c(nx,count,npar))
     }
-    if (flags) {
-      ncvar_put(nco, "counts", counts, 
-                start = c(1,ny - start - count + 2,1), 
-                count = c(nx,count,nlevels))
-    }
   } else {
+    ncvar_put(nco, "counts", counts, 
+              start = c(1,start,1), count = c(nx,count,nlevels))
+    ncvar_put(nco, "pvalue", pvalues, 
+              start = c(1,start,1), count = c(nx,count,ntests))
     ncvar_put(nco, "coefficients", coef, 
               start = c(1,start,1), count = c(nx,count,npar))
     if (opts$method == "Wald") {
@@ -658,12 +664,7 @@ for (i in 1:n.chunks) {
       ncvar_put(nco, "upper", upper, 
                 start = c(1,start,1), count = c(nx,count,npar))
     }
-    if (flags) {
-      ncvar_put(nco, "counts", counts, 
-                start = c(1,start,1), 
-                count = c(nx,count,nlevels))
-    }
-  }
+  } ## fliplat
 
 } ## i
 
