@@ -20,12 +20,14 @@ option_list = list(
   make_option(c("--threshold","-t"), action = "store", type = "double",
               help = "Threshold for wet days (mm) [default: 0.1]",
               default = 0.1),
-  make_option(c("--method","-m"), action = "store", type = "character",
-              help = "Method of inference (Wald or rank) [default: Wald]",
-              default = "Wald"),
   make_option(c("--nid","-n"), action = "store_false", type = "logical",
               help = "Not independent and identically distributed",
               dest = "iid", default = TRUE),
+  make_option(c("--contrasts","-c"), action = "store", type = "character",
+              help = "File containing alternative contrasts to use"),
+  make_option(c("--method","-m"), action = "store", type = "character",
+              help = "Method of inference (Wald or rank) [default: Wald]",
+              default = "Wald"),
   make_option(c("--level","-l"), action = "store", type = "double",
               help = "Nominal confidence level required [default: 0.95]",
               default = 0.95),
@@ -164,6 +166,14 @@ if (exists("mask", opts)) {
 } ## mask
 ntests  = length(tests)
 nlevels = length(labels)
+
+if (exists("contrasts", opts)) {
+  
+  nc = nc_open(opts$contrasts)
+  contrasts = ncvar_get(nc, nc$var[[1]]$name)
+  nc_close(nc)
+  
+}
 
 if (precip.units %in% c("mm","cm","m")) {
   intercept.units = "ln(mm)"
@@ -446,6 +456,9 @@ for (i in 1:n.chunks) {
         if (flags) {
           mask1 = mask1[mask]
           mask1 = factor(mask1, levels, labels)
+          if (exists("contrasts", opts)) {
+           contrasts(mask1) = contrasts 
+          }
         } else {
           mask  = mask & mask1
         }
