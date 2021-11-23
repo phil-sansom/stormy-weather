@@ -32,6 +32,9 @@ option_list = list(
   make_option("--compression", action = "store", type = "integer",
               help = "Compression level to use (0-9) [default: 5]",
               default = 5),
+  make_option("--ncores", action = "store", type = "integer",
+              help = "Number of CPU cores to use (only applies to rank method) [default: 2])",
+              default = 2),
   make_option("--memory", action = "store", type = "integer",
               help = "Maximum memory to use (in MB)"),
   make_option("--mask", action = "store", type = "character",
@@ -333,6 +336,166 @@ if (precip.units == "m") {
   warning("Precip units not recognised (mm,cm,m), specify threshold in native units")
 } ## precip.units
 
+## Quantile regression function for parallel execution
+rq.fun = function(k) {
+  
+  ## Extract data
+  temp1   = temp0  [k,l,]
+  precip1 = precip0[k,l,]
+  mask    = !is.na(precip1)
+  if (exists("mask", opts)) {
+    mask1 = mask0  [k,l,]
+    if (flags) {
+      mask1 = mask1[mask]
+      mask1 = factor(mask1, levels, labels)
+    } else {
+      mask  = mask & mask1
+    }
+  }
+  temp1   = temp1  [mask]
+  precip1 = precip1[mask]
+  
+  ## Initialize storage
+  results = list()
+  
+  ## Fit model
+  if (flags) {
+    
+    countskl = as.numeric(table(mask1))
+    rqm = try(rq(log(precip1) ~ mask1 + temp1 + mask1:temp1, 
+                 tau = opts$quantile), TRUE)
+    
+  } else {
+    
+    countskl = length(temp1)
+    rqm = try(rq(log(precip1) ~ temp1, 
+                 tau = opts$quantile, iid = opts$iid), TRUE)
+    
+  } ## flags
+  results$counts = countskl
+  if (class(rqm) == "try-error")
+    return(results)
+  
+  ## Model summary
+  if (opts$method == "Wald") {
+    
+    rqm.summary = try(summary(rqm, se = ifelse(opts$iid, "iid", "nid"), 
+                              covariance = TRUE), TRUE)
+    
+  } else if (opts$method == "rank") {
+    
+    rqm.summary = try(summary(rqm, se = "rank", alpha = 1 - opts$level, 
+                              iid = opts$iid), TRUE)
+    
+  } ## method
+  if (class(rqm.summary) == "try-error")
+    return(results)
+  
+  ## Fit null model
+  rq0 = try(rq(log(precip1) ~ 1, tau = opts$quantile), TRUE)
+  if (class(rq0) == "try-error")
+    return(results)
+  
+  ## Analysis of deviance
+  if (flags) {
+    
+    ## Fit simpler models for comparison
+    rq1 = try(rq(log(precip1) ~ mask1,
+                 tau = opts$quantile), TRUE)
+    if (class(rq1) == "try-error")
+      return(results)
+    rq2 = try(rq(log(precip1) ~ mask1 + temp1, 
+                 tau = opts$quantile), TRUE)
+    if (class(rq2) == "try-error")
+      return(results)
+    
+    ## Compute analysis of deviance
+    aod = try(anova(rqm, rq2, rq1, rq0, test = opts$method, 
+                    se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), 
+              TRUE)
+    
+  } else {
+    
+    ## Compute analysis of deviance
+    aod = try(anova(rqm, rq0, test = opts$method, 
+                    se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), 
+              TRUE)
+    
+  } ## flags
+  if (class(aod) == "try-error")
+    return(results)
+  
+  ## Store p-values
+  results$pvalues = rev(aod$table[,4])
+  
+  ## Extract coefficients
+  coefficients = rqm$coefficients
+  
+  ## Check that all levels populated
+  if (length(coefficients) < npar) {
+    
+    buffer = coefficients
+    coefficients = rep(NA, npar)
+    missing = which(! labels %in% rqm$xlevels$mask1)
+    slice = rep(TRUE, npar)
+    slice[c(missing,npar/2+missing)] = FALSE
+    coefficients[slice] = buffer
+    
+  }
+  
+  ## Store coefficients
+  results$coef = coefficients
+  
+  if (opts$method == "Wald") {
+    
+    ## Extract covariance
+    covariance = rqm.summary$cov
+    
+    ## Check that all levels populated
+    if (nrow(covariance) < npar) {
+      
+      buffer = covariance
+      covariance = matrix(NA, npar, npar)
+      missing = which(! labels %in% rqm$xlevels$mask1)
+      slice = matrix(TRUE, npar, npar)
+      slice[c(missing,npar/2+missing),] = FALSE
+      slice[,c(missing,npar/2+missing)] = FALSE
+      covariance[slice] = buffer
+      
+    }
+    
+    ## Store results
+    results$cov = covariance
+    results$df  = rqm.summary$rdf
+    
+  } else if (opts$method == "rank") {
+    
+    ## Extract bounds
+    bounds = rqm.summary$coefficients[,2:3]
+    
+    ## Check that all levels populated
+    if (nrow(bounds) < npar) {
+      
+      buffer = bounds
+      bounds = matrix(NA, npar, 2)
+      missing = which(! labels %in% rqm$xlevels$mask1)
+      slice = matrix(TRUE, npar, 2)
+      slice[c(missing,npar/2+missing),] = FALSE
+      bounds[slice] = buffer
+      
+    }
+    
+    ## Store results
+    results$lower = bounds[,1]
+    results$upper = bounds[,2]
+    
+  } ## method
+  
+  ## Return results
+  return(results)
+  
+} ## rq.func
+
 ## Loop over chunks
 for (i in 1:n.chunks) {
   
@@ -434,163 +597,35 @@ for (i in 1:n.chunks) {
 
   ## Quantile regression
   print(paste("Quantile regression on chunk",i,"of",n.chunks))
-  for (k in 1:nx) {
-    for (l in 1:count) {
-      
-      ## Extract data
-      temp1   = temp0  [k,l,]
-      precip1 = precip0[k,l,]
-      mask    = !is.na(precip1)
-      if (exists("mask", opts)) {
-        mask1 = mask0  [k,l,]
-        if (flags) {
-          mask1 = mask1[mask]
-          mask1 = factor(mask1, levels, labels)
-        } else {
-          mask  = mask & mask1
-        }
+  for (l in 1:count) {
+    
+    ## Run quantile regression
+    if (opts$method == "Wald") {
+      results = lapply(1:nx, rq.fun)
+    } else if (opts$method == "rank") {
+      results = mclapply(1:nx, rq.fun, mc.cores = opts$ncores)
+    } ## method
+    
+    ## Store results
+    for (k in 1:nx) {
+      counts[k,l,] = results[[k]]$counts
+      if (exists("coef", results[[k]])) {
+        pvalues[k,l,] = results[[k]]$pvalues
+        coef   [k,l,] = results[[k]]$coef
+        if (opts$method == "Wald") {
+          cov[k,l,,]  = results[[k]]$cov
+          df [k,l  ]  = results[[k]]$df
+        } else if (opts$method == "rank") {
+          lower[k,l,] = results[[k]]$lower
+          upper[k,l,] = results[[k]]$upper
+        } ## method
       }
-      temp1   = temp1  [mask]
-      precip1 = precip1[mask]
-
-      ## Fit model
-      if (flags) {
-
-        countskl = as.numeric(table(mask1))
-        rqm = try(rq(log(precip1) ~ mask1 + temp1 + mask1:temp1, 
-                     tau = opts$quantile), TRUE)
-        
-      } else {
-        
-        countskl = length(temp1)
-        rqm = try(rq(log(precip1) ~ temp1, 
-                     tau = opts$quantile, iid = opts$iid), TRUE)
-
-      } ## flags
-      counts[k,l,] = countskl
-      if (class(rqm) == "try-error")
-        next
-      
-      ## Model summary
-      if (opts$method == "Wald") {
-        
-        rqm.summary = try(summary(rqm, se = ifelse(opts$iid, "iid", "nid"), 
-                                  covariance = TRUE), TRUE)
-        
-      } else if (opts$method == "rank") {
-        
-        rqm.summary = try(summary(rqm, se = "rank", alpha = 1 - opts$level, 
-                                  iid = opts$iid), TRUE)
-        
-      } ## method
-      if (class(rqm.summary) == "try-error")
-        next
-      
-      ## Fit null model
-      rq0 = try(rq(log(precip1) ~ 1, tau = opts$quantile), TRUE)
-      if (class(rq0) == "try-error")
-        next
-      
-      ## Analysis of deviance
-      if (flags) {
-        
-        ## Fit simpler models for comparison
-        rq1 = try(rq(log(precip1) ~ mask1,
-                     tau = opts$quantile), TRUE)
-        if (class(rq1) == "try-error")
-          next
-        rq2 = try(rq(log(precip1) ~ mask1 + temp1, 
-                     tau = opts$quantile), TRUE)
-        if (class(rq2) == "try-error")
-          next
-        
-        ## Compute analysis of deviance
-        aod = try(anova(rqm, rq2, rq1, rq0, test = opts$method, 
-                        se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), 
-                  TRUE)
-        
-      } else {
-        
-        ## Compute analysis of deviance
-        aod = try(anova(rqm, rq0, test = opts$method, 
-                        se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), 
-                  TRUE)
-
-      } ## flags
-      if (class(aod) == "try-error")
-        next
-      
-      ## Store p-values
-      pvalues[k,l,] = rev(aod$table[,4])
-      
-      ## Extract coefficients
-      coefficients = rqm$coefficients
-      
-      ## Check that all levels populated
-      if (length(coefficients) < npar) {
-        
-        buffer = coefficients
-        coefficients = rep(NA, npar)
-        missing = which(! labels %in% rqm$xlevels$mask1)
-        slice = rep(TRUE, npar)
-        slice[c(missing,npar/2+missing)] = FALSE
-        coefficients[slice] = buffer
-        
-      }
-      
-      ## Store coefficients
-      coef[k,l,] = coefficients
-
-      if (opts$method == "Wald") {
-        
-        ## Extract covariance
-        covariance = rqm.summary$cov
-        
-        ## Check that all levels populated
-        if (nrow(covariance) < npar) {
-          
-          buffer = covariance
-          covariance = matrix(NA, npar, npar)
-          missing = which(! labels %in% rqm$xlevels$mask1)
-          slice = matrix(TRUE, npar, npar)
-          slice[c(missing,npar/2+missing),] = FALSE
-          slice[,c(missing,npar/2+missing)] = FALSE
-          covariance[slice] = buffer
-
-        }
-        
-        ## Store results
-        cov[k,l,,] = covariance
-        df [k,l  ] = rqm.summary$rdf
-        
-      } else if (opts$method == "rank") {
-        
-        ## Extract bounds
-        bounds = rqm.summary$coefficients[,2:3]
-        
-        ## Check that all levels populated
-        if (nrow(bounds) < npar) {
-
-          buffer = bounds
-          bounds = matrix(NA, npar, 2)
-          missing = which(! labels %in% rqm$xlevels$mask1)
-          slice = matrix(TRUE, npar, 2)
-          slice[c(missing,npar/2+missing),] = FALSE
-          bounds[slice] = buffer
-          
-        }
-        
-        ## Store results
-        lower[k,l,] = bounds[,1]
-        upper[k,l,] = bounds[,2]
-      
-      } ## method
-      
     } ## l
+
   } ## k
-  rm(precip0,temp0,temp1,precip1,mask)
+  rm(precip0,temp0)
   if (exists("mask", opts))
-    rm(mask0,mask1)
+    rm(mask0)
   gc()
   
   ## Transform data
