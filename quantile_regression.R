@@ -38,6 +38,9 @@ option_list = list(
               default = 2),
   make_option("--memory", action = "store", type = "integer",
               help = "Maximum memory to use (in MB)"),
+  make_option("--time", action = "store", type = "integer",
+              help = "Maximum time allowed for each regression (in seconds) [default: 60]",
+              default = 60),
   make_option("--mask", action = "store", type = "character",
               help = "List of mask files to apply")
 )
@@ -337,24 +340,8 @@ if (precip.units == "m") {
   warning("Precip units not recognised (mm,cm,m), specify threshold in native units")
 } ## precip.units
 
-## Quantile regression function for parallel execution
-rq.fun = function(k) {
-  
-  ## Extract data
-  temp1   = temp0  [k,l,]
-  precip1 = precip0[k,l,]
-  mask    = !is.na(precip1)
-  if (exists("mask", opts)) {
-    mask1 = mask0  [k,l,]
-    if (flags) {
-      mask1 = mask1[mask]
-      mask1 = factor(mask1, levels, labels)
-    } else {
-      mask  = mask & mask1
-    }
-  }
-  temp1   = temp1  [mask]
-  precip1 = precip1[mask]
+## Quantile regression functions for parallel execution
+inner.fun = function() {
   
   ## Initialize storage
   results = list()
@@ -362,18 +349,15 @@ rq.fun = function(k) {
   ## Fit model
   if (flags) {
     
-    countskl = as.numeric(table(mask1))
     rqm = try(rq(log(precip1) ~ mask1 + temp1 + mask1:temp1, 
                  tau = opts$quantile), TRUE)
     
   } else {
     
-    countskl = length(temp1)
     rqm = try(rq(log(precip1) ~ temp1, 
                  tau = opts$quantile, iid = opts$iid), TRUE)
     
   } ## flags
-  results$counts = countskl
   if (class(rqm) == "try-error")
     return(results)
   
@@ -491,6 +475,49 @@ rq.fun = function(k) {
     results$upper = bounds[,2]
     
   } ## method
+
+  return(results)
+  
+}
+
+rq.fun = function(k) {
+  
+  ## Extract data
+  temp1   = temp0  [k,l,]
+  precip1 = precip0[k,l,]
+  mask    = !is.na(precip1)
+  if (exists("mask", opts)) {
+    mask1 = mask0  [k,l,]
+    if (flags) {
+      mask1 = mask1[mask]
+      mask1 = factor(mask1, levels, labels)
+    } else {
+      mask  = mask & mask1
+    }
+  }
+  temp1   = temp1  [mask]
+  precip1 = precip1[mask]
+  
+  ## Initialize storage
+  results = list()
+  
+  ## Get counts
+  if (flags) {
+    
+    countskl = as.numeric(table(mask1))
+
+  } else {
+    
+    countskl = length(temp1)
+
+  } ## flags
+  results$counts = countskl
+  
+  ## Quantile regression
+  setTimeLimit(elapsed = opts$time, transient = TRUE)
+  buffer = try(inner.fun(), TRUE)
+  if (class(buffer) != "try-error")
+    results = c(results, buffer)
   
   ## Return results
   return(results)
