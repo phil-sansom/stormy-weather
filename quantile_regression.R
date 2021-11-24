@@ -168,6 +168,7 @@ if (exists("mask", opts)) {
   }
 } else {
   labels = temp.name
+  levels = NULL
 } ## mask
 ntests  = length(tests)
 nlevels = length(labels)
@@ -341,7 +342,7 @@ if (precip.units == "m") {
 } ## precip.units
 
 ## Quantile regression functions for parallel execution
-inner.fun = function() {
+inner.fun = function(precip1, temp1, mask1, labels, opts) {
   
   ## Initialize storage
   results = list()
@@ -480,7 +481,7 @@ inner.fun = function() {
   
 }
 
-rq.fun = function(k) {
+rq.fun = function(k, l, temp0, precip0, mask0, levels, labels, opts) {
   
   ## Extract data
   temp1   = temp0  [k,l,]
@@ -515,7 +516,7 @@ rq.fun = function(k) {
   
   ## Quantile regression
   setTimeLimit(elapsed = opts$time, transient = TRUE)
-  buffer = try(inner.fun(), TRUE)
+  buffer = try(inner.fun(precip1, temp1, mask1, labels, opts), TRUE)
   if (class(buffer) != "try-error")
     results = c(results, buffer)
   
@@ -532,8 +533,11 @@ for (i in 1:n.chunks) {
   count = chunks$count[i]
   temp0   = array(NA, c(nx,count,nt))
   precip0 = array(NA, c(nx,count,nt))
-  if (exists("mask", opts))
+  if (exists("mask", opts)) {
     mask0 = array(NA, c(nx,count,nt))
+  } else {
+    mask0 = NULL
+  }
   counts  = array(NA, c(nx,count,nlevels))
   pvalues = array(NA, c(nx,count,ntests))
   coef = array(NA, c(nx,count,npar))
@@ -631,7 +635,10 @@ for (i in 1:n.chunks) {
     if (opts$method == "Wald") {
       results = lapply(1:nx, rq.fun)
     } else if (opts$method == "rank") {
-      results = mclapply(1:nx, rq.fun, mc.cores = opts$ncores)
+      results = mclapply(1:nx, rq.fun, l = l, 
+                         temp0 = temp0, precip0 = precip0, mask0 = mask0, 
+                         levels = levels, labels = labels, opts = opts,
+                         mc.cores = opts$ncores)
     } ## method
     
     ## Store results
