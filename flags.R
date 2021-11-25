@@ -88,10 +88,10 @@ data[fronts & thunder & cyclones]    = 7
 ## Data dictionary
 if (opts$none) {
   flag_values = c(0,1,2,3,4,5,6,7)
-  flag_meanings = "N C F T CF CT FT CFT"
+  flag_meanings = "N CO FO TO CF CT FT CFT"
 } else {
   flag_values = c(1,2,3,4,5,6,7)
-  flag_meanings = "C F T CF CT FT CFT"
+  flag_meanings = "CO FO TO CF CT FT CFT"
 }
 
 ## Define dimensions
