@@ -184,9 +184,9 @@ if (exists("mask", opts)) {
   } else {
     
     contrasts = contr.treatment(length(labels))
-    contrast.labels = labels[-1]
+    contrast.names = labels[-1]
     rownames(contrasts) = labels
-    colnames(contrasts) = contrast.labels
+    colnames(contrasts) = contrast.names
     
   } ## contrasts
   
@@ -197,7 +197,6 @@ if (exists("mask", opts)) {
 } ## mask
 ntests  = length(tests)
 nlevels = length(labels)
-
 
 if (precip.units %in% c("mm","cm","m")) {
   intercept.units = "ln(mm)"
