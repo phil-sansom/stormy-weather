@@ -149,10 +149,12 @@ nc_close(nc)
 flags = FALSE
 tests = temp.name
 if (exists("mask", opts)) {
+  
   nc = nc_open(mlist[1])
   mask.name = nc$var[[1]]$name
   levels = ncatt_get(nc, mask.name, "flag_values")
   labels = ncatt_get(nc, mask.name, "flag_meanings")
+  nc_close(nc)
   if (levels$hasatt & labels$hasatt) {
     flags = TRUE
     levels = levels$value
@@ -161,19 +163,41 @@ if (exists("mask", opts)) {
   } else {
     labels = mask.name
   }
+  
+  ## Get contrasts if specified
+  if (exists("contrasts", opts)) {
+    
+    nc = nc_open(opts$contrasts)
+    contrasts = ncvar_get(nc, "contrasts")
+    contrast.labels = as.character(ncvar_get(nc, "level"))
+    contrast.names  = as.character(ncvar_get(nc, "contrast"))
+    rownames(contrasts) = contrast.labels
+    colnames(contrasts) = contrast.names
+    nc_close(nc)
+    
+    ## Check matches with mask
+    if (!identical(labels,contrast.labels))
+      stop("Contrast labels do not match mask labels")
+    if (ncol(contrasts) != nrow(contrasts) - 1)
+      stop("Incorrect number of contrasts: number of contrasts should be one less than number of levels.")
+    
+  } else {
+    
+    contrasts = contr.treatment(length(labels))
+    contrast.labels = labels[-1]
+    rownames(contrasts) = labels
+    colnames(contrasts) = contrast.labels
+    
+  } ## contrasts
+  
 } else {
+  
   labels = temp.name
+  
 } ## mask
 ntests  = length(tests)
 nlevels = length(labels)
 
-if (exists("contrasts", opts)) {
-  
-  nc = nc_open(opts$contrasts)
-  contrasts = ncvar_get(nc, nc$var[[1]]$name)
-  nc_close(nc)
-  
-}
 
 if (precip.units %in% c("mm","cm","m")) {
   intercept.units = "ln(mm)"
@@ -225,8 +249,8 @@ if (fliplat) {
 ## Parameter names
 if (flags) {
   npar = 2*nlevels
-  par.names = c("Intercept",labels[2:nlevels],
-                temp.name,paste0(temp.name,":",labels[2:nlevels]))
+  par.names = c("Intercept",contrast.names,
+                temp.name,paste0(temp.name,":",contrast.names))
 } else {
   npar = 2
   par.names = c("Intercept",temp.name)
@@ -248,6 +272,18 @@ par.var   = ncvar_def("parameter", "", list(char.dim,par.dim),
                       longname = "Parameter", prec = "char")
 test.var  = ncvar_def("ftest", "", list(char.dim,test.dim),
                       longname = "F-test", prec = "char")
+vars = list(level.var,par.var,test.var)
+if (flags) {
+  ## Define dimensions
+  contrast.dim = ncdim_def("con", "", 1:(nlevels-1), create_dimvar = FALSE)
+
+  ## Define variables
+  contrast.var  = ncvar_def("contrast" , "", list(char.dim,contrast.dim),
+                            prec = "char")
+  contrasts.var = ncvar_def("contrasts", "", list(level.dim,contrast.dim),
+                            prec = "double")
+  vars = c(vars,list(contrast.var,contrasts.var))
+} ## flags
 count.var = ncvar_def("counts", "", list(lon.dim,lat.dim,level.dim),
                       missval = -2147483647L,
                       longname = "Counts", 
@@ -263,7 +299,7 @@ coef.var = ncvar_def("coefficients", "", list(lon.dim,lat.dim,par.dim),
                      longname = "Coefficients", 
                      prec = "double",
                      compression = opts$compression)
-vars = list(level.var,par.var,test.var,count.var,pval.var,coef.var)
+vars = c(vars,list(count.var,pval.var,coef.var))
 
 if (opts$method == "Wald") {
 
@@ -328,11 +364,16 @@ if (opts$method == "Wald") {
 } else if (opts$method == "rank") {
   ncatt_put(nco, "lower", "coordinates", "parameter")
   ncatt_put(nco, "upper", "coordinates", "parameter")
-}
+} ## method
 ncvar_put(nco, "level", labels)
 ncvar_put(nco, "ftest", tests )
 ncatt_put(nco, "counts", "coordinates", "level")
 ncatt_put(nco, "pvalue", "coordinates", "ftest")
+if (flags) {
+  ncvar_put(nco, "contrast" , contrast.names)
+  ncvar_put(nco, "contrasts", contrasts)
+  ncatt_put(nco, "contrasts", "coordinates", "level contrast")
+ } ## flags
 
 ## Transform threshold
 if (precip.units == "m") {
@@ -461,8 +502,8 @@ for (i in 1:n.chunks) {
           }
         } else {
           mask  = mask & mask1
-        }
-      }
+        } ## flags
+      } ## mask
       temp1   = temp1  [mask]
       precip1 = precip1[mask]
 
