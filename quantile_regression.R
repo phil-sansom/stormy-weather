@@ -515,7 +515,7 @@ for (i in 1:n.chunks) {
 
         countskl = as.numeric(table(mask1))
         rqm = try(rq(log(precip1) ~ mask1 + temp1 + mask1:temp1, 
-                     tau = opts$quantile), TRUE)
+                     tau = opts$quantile, iid = opts$iid), TRUE)
         
       } else {
         
@@ -544,7 +544,8 @@ for (i in 1:n.chunks) {
         next
       
       ## Fit null model
-      rq0 = try(rq(log(precip1) ~ 1, tau = opts$quantile), TRUE)
+      rq0 = try(rq(log(precip1) ~ 1, 
+                   tau = opts$quantile, iid = opts$iid), TRUE)
       if (class(rq0) == "try-error")
         next
       
@@ -553,11 +554,11 @@ for (i in 1:n.chunks) {
         
         ## Fit simpler models for comparison
         rq1 = try(rq(log(precip1) ~ mask1,
-                     tau = opts$quantile), TRUE)
+                     tau = opts$quantile, iid = opts$iid), TRUE)
         if (class(rq1) == "try-error")
           next
         rq2 = try(rq(log(precip1) ~ mask1 + temp1, 
-                     tau = opts$quantile), TRUE)
+                     tau = opts$quantile, iid = opts$iid), TRUE)
         if (class(rq2) == "try-error")
           next
         
