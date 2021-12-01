@@ -1,9 +1,8 @@
 #!/usr/bin/env -S Rscript --vanilla
 
 ## Load libraries
-library(ncdf4)
-library(parallel)
 library(optparse)
+library(ncdf4)
 suppressPackageStartupMessages(library(quantreg))
 
 ## Load source
