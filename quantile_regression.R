@@ -23,6 +23,12 @@ option_list = list(
   make_option(c("--nid","-n"), action = "store_false", type = "logical",
               help = "Not independent and identically distributed",
               dest = "iid", default = TRUE),
+  make_option(c("--piecewise","-p"), action = "store_true", type = "logical",
+              help = "Conduct piecewise regression",
+              default = FALSE),
+  make_option(c("--nloc"), action = "store", type = "integer",
+              help = "Number of locations to test for piecewise regression",
+              default = 9),
   make_option(c("--contrasts","-c"), action = "store", type = "character",
               help = "File containing alternative contrasts to use"),
   make_option(c("--method","-m"), action = "store", type = "character",
@@ -146,8 +152,6 @@ precip.longname = nc$var[[1]]$longname
 nc_close(nc)
 
 ## Mask levels
-flags = FALSE
-tests = temp.name
 if (exists("mask", opts)) {
   
   nc = nc_open(mlist[1])
@@ -160,7 +164,13 @@ if (exists("mask", opts)) {
     flags = TRUE
     levels = levels$value
     labels = strsplit(labels$value, " ")[[1]]
-    tests = c(mask.name,temp.name,"interaction")
+    if (opts$piecewise) {
+      tests = c(mask.name,paste0(temp.name,1),paste0(temp.name,1),
+                paste0(mask.name,":",temp.name,1),
+                paste0(mask.name,":",temp.name,2))
+    } else {
+      tests = c(mask.name,temp.name,paste0(mask.name,":",temp.name))
+    } ## piecewise
     
     ## Get contrasts if specified
     if (exists("contrasts", opts)) {
@@ -190,13 +200,20 @@ if (exists("mask", opts)) {
     
   } else {
     
+    flags  = FALSE
     labels = mask.name
     
   } ## levels & labels
   
 } else {
   
+  flags  = FALSE
   labels = temp.name
+  if (opts$piecewise) {
+    tests = paste0(temp.name, c(1,2))
+  } else {
+    tests = temp.name
+  } ## piecewise
   
 } ## mask
 ntests  = length(tests)
@@ -251,12 +268,24 @@ if (fliplat) {
 
 ## Parameter names
 if (flags) {
-  npar = 2*nlevels
-  par.names = c("Intercept",contrast.names,
-                temp.name,paste0(temp.name,":",contrast.names))
+  if (opts$piecewise) {
+    npar = 3*nlevels
+    par.names = c("Intercept",contrast.names,
+                  paste0(temp.name,1),paste0(contrast.names,":",temp.name,1),
+                  paste0(temp.name,2),paste0(contrast.names,":",temp.name,2))
+  } else {
+    npar = 2*nlevels
+    par.names = c("Intercept",contrast.names,
+                  temp.name,paste0(temp.name,":",contrast.names))
+  } ## piecewise
 } else {
-  npar = 2
-  par.names = c("Intercept",temp.name)
+  if (opts$piecewise) {
+    npar = 3
+    par.names = c("Intercept",paste0(temp.name,1),paste0(temp.name,2))
+  } else {
+    npar = 2
+    par.names = c("Intercept",temp.name)
+  } ## piecewise
 } ## flags
 nchar = max(nchar(par.names),nchar(tests))
 
@@ -287,11 +316,20 @@ if (flags) {
                             prec = "double")
   vars = c(vars,list(contrast.var,contrasts.var))
 } ## flags
-count.var = ncvar_def("counts", "", list(lon.dim,lat.dim,level.dim),
-                      missval = -2147483647L,
-                      longname = "Counts", 
-                      prec = "integer",
-                      compression = opts$compression)
+if (opts$piecewise) {
+  piece.dim = ncdim_def("piece", "", 1:2)
+  count.var = ncvar_def("counts", "", list(lon.dim,lat.dim,level.dim,piece.dim),
+                        missval = -2147483647L,
+                        longname = "Counts", 
+                        prec = "integer",
+                        compression = opts$compression)
+} else {
+  count.var = ncvar_def("counts", "", list(lon.dim,lat.dim,level.dim),
+                        missval = -2147483647L,
+                        longname = "Counts", 
+                        prec = "integer",
+                        compression = opts$compression)
+} ## piecewise
 pval.var = ncvar_def("pvalue", "", list(lon.dim,lat.dim,test.dim),
                      missval = 9.9692099683868690e+36,
                      longname = "p-value", 
@@ -358,6 +396,10 @@ ncatt_put(nco, 0, "method"   , opts$method   , prec = "text"   )
 ncatt_put(nco, 0, "iid"      , opts$iid      , prec = "integer")
 if (opts$method == "rank")
   ncatt_put(nco, 0, "level", opts$level, prec = "double")
+ncatt_put(nco, 0, "piecewise", opts$piecewise, prec = "integer")
+if (opts$piecewise) {
+  ncatt_put(nco, 0, "nloc", opts$nloc, prec = "integer")
+}
 
 ## Write auxiliary coordinate variable
 ncvar_put(nco, "parameter", par.names)
@@ -397,7 +439,11 @@ for (i in 1:n.chunks) {
   precip0 = array(NA, c(nx,count,nt))
   if (exists("mask", opts))
     mask0 = array(NA, c(nx,count,nt))
-  counts  = array(NA, c(nx,count,nlevels))
+  if (opts$piecewise) {
+    counts  = array(NA, c(nx,count,nlevels,2))
+  } else {
+    counts  = array(NA, c(nx,count,nlevels))
+  }
   pvalues = array(NA, c(nx,count,ntests))
   coef = array(NA, c(nx,count,npar))
   if (opts$method == "Wald") {
@@ -463,7 +509,7 @@ for (i in 1:n.chunks) {
   } ## j
   gc()
 
-  # ## Smooth temp data
+  ## Smooth temp data
   if (smoothing > 0) {
     
     print(paste("Smoothing chunk",i,"of",n.chunks))
@@ -509,20 +555,99 @@ for (i in 1:n.chunks) {
       } ## mask
       temp1   = temp1  [mask]
       precip1 = precip1[mask]
+      
+      if (opts$piecewise)
+        locs = quantile(temp1, seq(1/(opts$nloc + 1), 1 - 1/(opts$nloc + 1), 
+                                   1/(opts$nloc + 1)), na.rm = TRUE)
 
       ## Fit model
       if (flags) {
 
-        countskl = as.numeric(table(mask1))
-        rqm = try(rq(log(precip1) ~ mask1 + temp1 + mask1:temp1, 
-                     tau = opts$quantile, iid = opts$iid), TRUE)
-        
+       if (opts$piecewise) {
+          
+          aic = rep(NA, opts$nloc)
+          for (l in 1:opts$nloc) {
+            
+            t0 = locs[l]
+            t1 = temp1 - t0
+            mask2 = temp1 > t0
+            t2 = t1*mask2
+            rqm = try(rq(log(precip1) ~ mask1 + t1  + t2 + mask1:t1 + mask1:t2, 
+                         tau = opts$quantile, iid = opts$iid), TRUE)
+            if (class(rqm) == "try-error")
+              next
+            aic[l] = AIC(rqm)
+            
+          } ## l
+          
+          if (any(!is.na(aic))) {
+            
+            l = which.min(aic)
+            t0 = locs[l]
+            t1 = temp1 - t0
+            mask2 = temp1 > t0
+            t2 = t1*mask2
+            countskl = table(mask1,mask2)
+            rqm = try(rq(log(precip1) ~ mask1 + t1  + t2 + mask1:t1 + mask1:t2, 
+                         tau = opts$quantile, iid = opts$iid), TRUE)
+            
+          } else {
+            
+            countskl = cbind(as.numeric(table(mask1)),NA)
+            
+          } ## aic
+
+        } else {
+          
+          countskl = as.numeric(table(mask1))
+          rqm = try(rq(log(precip1) ~ mask1 + temp1 + mask1:temp1, 
+                       tau = opts$quantile, iid = opts$iid), TRUE)
+        } ## piecewise
+
       } else {
         
-        countskl = length(temp1)
-        rqm = try(rq(log(precip1) ~ temp1, 
-                     tau = opts$quantile, iid = opts$iid), TRUE)
-
+        if (opts$piecewise) {
+          
+          aic = rep(NA, opts$nloc)
+          for (l in 1:opts$nloc) {
+            
+            t0 = locs[l]
+            t1 = temp1 - t0
+            mask2 = temp1 > t0
+            t2 = t1*mask2
+            rqm = try(rq(log(precip1) ~ t1  + t2, 
+                         tau = opts$quantile, iid = opts$iid), TRUE)
+            if (class(rqm) == "try-error")
+              next
+            aic[l] = AIC(rqm)
+            
+          } ## l
+          
+          if (any(!is.na(aic))) {
+            
+            l = which.min(aic)
+            t0 = locs[l]
+            t1 = temp1 - t0
+            mask2 = temp1 > t0
+            t2 = t1*mask2
+            countskl = c(length(temp1) - sum(mask2),sum(mask2))
+            rqm = try(rq(log(precip1) ~ t1  + t2, 
+                         tau = opts$quantile, iid = opts$iid), TRUE)
+            
+          } else {
+            
+            countskl = c(length(temp1),NA)
+            
+          } ## aic
+          
+        } else {
+          
+          countskl = length(temp1)
+          rqm = try(rq(log(precip1) ~ temp1, 
+                       tau = opts$quantile, iid = opts$iid), TRUE)
+          
+        } ## piecewise
+        
       } ## flags
       counts[k,l,] = countskl
       if (class(rqm) == "try-error")
@@ -557,22 +682,65 @@ for (i in 1:n.chunks) {
                      tau = opts$quantile, iid = opts$iid), TRUE)
         if (class(rq1) == "try-error")
           next
-        rq2 = try(rq(log(precip1) ~ mask1 + temp1, 
-                     tau = opts$quantile, iid = opts$iid), TRUE)
-        if (class(rq2) == "try-error")
-          next
         
-        ## Compute analysis of deviance
-        aod = try(anova(rqm, rq2, rq1, rq0, test = opts$method, 
-                        se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), 
-                  TRUE)
+        if (opts$piecewise) {
+          
+          rq2 = try(rq(log(precip1) ~ mask1 + t1, 
+                       tau = opts$quantile, iid = opts$iid), TRUE)
+          if (class(rq2) == "try-error")
+            next
+          rq3 = try(rq(log(precip1) ~ mask1 + t1 + t2, 
+                       tau = opts$quantile, iid = opts$iid), TRUE)
+          if (class(rq3) == "try-error")
+            next
+          rq4 = try(rq(log(precip1) ~ mask1 + t1 + t2 + mask1:t1, 
+                       tau = opts$quantile, iid = opts$iid), TRUE)
+          if (class(rq4) == "try-error")
+            next
+          
+          ## Compute analysis of deviance
+          aod = try(anova(rqm, rq4, rq3, rq2, rq1, rq0, test = opts$method, 
+                          se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), 
+                    TRUE)
+          
+        } else {
+          
+          rq2 = try(rq(log(precip1) ~ mask1 + temp1, 
+                       tau = opts$quantile, iid = opts$iid), TRUE)
+          if (class(rq2) == "try-error")
+            next
+          
+          ## Compute analysis of deviance
+          aod = try(anova(rqm, rq2, rq1, rq0, test = opts$method, 
+                          se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), 
+                    TRUE)
+          
+        } ## piecewise
         
       } else {
         
-        ## Compute analysis of deviance
-        aod = try(anova(rqm, rq0, test = opts$method, 
-                        se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), 
-                  TRUE)
+        if (opts$piecewise) {
+          
+          ## Fit simpler models for comparison
+          rq1 = try(rq(log(precip1) ~ t1,
+                       tau = opts$quantile, iid = opts$iid), TRUE)
+          if (class(rq1) == "try-error")
+            next
+        
+          ## Compute analysis of deviance  
+          aod = try(anova(rqm, rq1, rq0, test = opts$method, 
+                          se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), 
+                    TRUE)
+          
+          
+        } else {
+          
+          ## Compute analysis of deviance
+          aod = try(anova(rqm, rq0, test = opts$method, 
+                          se = ifelse(opts$iid, "iid", "nid"), iid = opts$iid), 
+                    TRUE)
+          
+        } ## piecewise
 
       } ## flags
       if (class(aod) == "try-error")
@@ -726,5 +894,5 @@ for (i in 1:n.chunks) {
 
 } ## i
 
-## Close outout file
+## Close output file
 nc_close(nco)
