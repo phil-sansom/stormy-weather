@@ -6,6 +6,8 @@ library(ncdf4)
 
 ## Optional arguments
 option_list = list(
+  make_option(c("--none","-n"), action = "store_true", type = "logical",
+              help = "Include instances with no storms", default = FALSE),
   make_option(c("--compression","-c"), action = "store", type = "integer",
               help = "Compression level to use (0-9) [default: 5]",
               default = 5)
@@ -70,7 +72,11 @@ nc_close(nct)
 
 ## Combine data
 data = array(NA, c(nx,ny,nt))
-data[!(cyclones | fronts | thunder)] = 0
+if (opts$none) {
+  data[!(cyclones | fronts | thunder)] = 0
+} else {
+  data[!(cyclones | fronts | thunder)] = NA
+}
 data[cyclones & !(fronts | thunder)] = 1
 data[fronts & !(cyclones | thunder)] = 2
 data[thunder & !(cyclones | fronts)] = 3
@@ -80,8 +86,13 @@ data[(fronts & thunder) & !cyclones] = 6
 data[fronts & thunder & cyclones]    = 7
 
 ## Data dictionary
-flag_values = c(0,1,2,3,4,5,6,7)
-flag_meanings = "none cyclone front thunder cyclone_front cyclone_thunder front_thunder cyclone_front_thunder"
+if (opts$none) {
+  flag_values = c(0,1,2,3,4,5,6,7)
+  flag_meanings = "N CO FO TO CF CT FT CFT"
+} else {
+  flag_values = c(1,2,3,4,5,6,7)
+  flag_meanings = "CO FO TO CF CT FT CFT"
+}
 
 ## Define dimensions
 lon.dim  = ncdim_def("longitude", "degrees_east" , lon, longname = "Longitude")
