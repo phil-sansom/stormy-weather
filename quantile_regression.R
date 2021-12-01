@@ -156,39 +156,43 @@ if (exists("mask", opts)) {
   labels = ncatt_get(nc, mask.name, "flag_meanings")
   nc_close(nc)
   if (levels$hasatt & labels$hasatt) {
+    
     flags = TRUE
     levels = levels$value
     labels = strsplit(labels$value, " ")[[1]]
     tests = c(mask.name,temp.name,"interaction")
+    
+    ## Get contrasts if specified
+    if (exists("contrasts", opts)) {
+      
+      nc = nc_open(opts$contrasts)
+      contrasts = ncvar_get(nc, "contrasts")
+      contrast.labels = as.character(ncvar_get(nc, "level"))
+      contrast.names  = as.character(ncvar_get(nc, "contrast"))
+      rownames(contrasts) = contrast.labels
+      colnames(contrasts) = contrast.names
+      nc_close(nc)
+      
+      ## Check matches with mask
+      if (!identical(labels,contrast.labels))
+        stop("Contrast labels do not match mask labels")
+      if (ncol(contrasts) != nrow(contrasts) - 1)
+        stop("Incorrect number of contrasts: number of contrasts should be one less than number of levels.")
+      
+    } else {
+      
+      contrasts = contr.treatment(length(labels))
+      contrast.names = labels[-1]
+      rownames(contrasts) = labels
+      colnames(contrasts) = contrast.names
+      
+    } ## contrasts
+    
   } else {
+    
     labels = mask.name
-  }
-  
-  ## Get contrasts if specified
-  if (exists("contrasts", opts)) {
     
-    nc = nc_open(opts$contrasts)
-    contrasts = ncvar_get(nc, "contrasts")
-    contrast.labels = as.character(ncvar_get(nc, "level"))
-    contrast.names  = as.character(ncvar_get(nc, "contrast"))
-    rownames(contrasts) = contrast.labels
-    colnames(contrasts) = contrast.names
-    nc_close(nc)
-    
-    ## Check matches with mask
-    if (!identical(labels,contrast.labels))
-      stop("Contrast labels do not match mask labels")
-    if (ncol(contrasts) != nrow(contrasts) - 1)
-      stop("Incorrect number of contrasts: number of contrasts should be one less than number of levels.")
-    
-  } else {
-    
-    contrasts = contr.treatment(length(labels))
-    contrast.names = labels[-1]
-    rownames(contrasts) = labels
-    colnames(contrasts) = contrast.names
-    
-  } ## contrasts
+  } ## levels & labels
   
 } else {
   
