@@ -26,9 +26,9 @@ option_list = list(
   make_option(c("--piecewise","-p"), action = "store_true", type = "logical",
               help = "Conduct piecewise regression",
               default = FALSE),
-  make_option(c("--nloc"), action = "store", type = "integer",
-              help = "Number of locations to test for piecewise regression",
-              default = 9),
+  make_option(c("--tolerance"), action = "store", type = "double",
+              help = "Tolerance for optimization of breakpoint in piecewise regression [default: 0.1]",
+              default = 0.1),
   make_option(c("--contrasts","-c"), action = "store", type = "character",
               help = "File containing alternative contrasts to use"),
   make_option(c("--method","-m"), action = "store", type = "character",
@@ -399,7 +399,7 @@ if (opts$method == "rank")
   ncatt_put(nco, 0, "level", opts$level, prec = "double")
 ncatt_put(nco, 0, "piecewise", opts$piecewise, prec = "integer")
 if (opts$piecewise)
-  ncatt_put(nco, 0, "nloc", opts$nloc, prec = "integer")
+  ncatt_put(nco, 0, "tolerance", opts$tolerance, prec = "double")
 
 ## Write auxiliary coordinate variable
 ncvar_put(nco, "parameter", par.names)
@@ -432,6 +432,29 @@ if (precip.units == "m") {
 } else if (! precip.units == "mm") {
   warning("Precip units not recognised (mm,cm,m), specify threshold in native units")
 } ## precip.units
+
+## Function for piecewise optimization
+f = function(t0, precip, temp, mask, opts) {
+  
+  t1 = temp - t0
+  mask2 = temp > t0
+  t2 = t1*mask2
+  
+  if (is.null(mask)) {
+    rqm = try(rq(log(precip) ~ t1  + t2, 
+                 tau = opts$quantile, iid = opts$iid), TRUE)
+  } else {
+     rqm = try(rq(log(precip) ~ mask + t1  + t2 + mask:t1 + mask:t2, 
+                  tau = opts$quantile, iid = opts$iid), TRUE)
+  }
+  if (class(rqm) == "try-error") {
+    z = 1e+307
+  } else {
+    z = AIC(rqm)
+  }
+  return(z)
+  
+}
 
 ## Loop over chunks
 for (i in 1:n.chunks) {
@@ -539,6 +562,7 @@ for (i in 1:n.chunks) {
   ## Quantile regression
   print(paste("Quantile regression on chunk",i,"of",n.chunks))
   for (k in 1:nx) {
+    print(k)
     for (l in 1:count) {
       
       ## Extract data
@@ -560,34 +584,26 @@ for (i in 1:n.chunks) {
       temp1   = temp1  [mask]
       precip1 = precip1[mask]
       
-      if (opts$piecewise)
-        locs = quantile(temp1, seq(1/(opts$nloc + 1), 1 - 1/(opts$nloc + 1), 
-                                   1/(opts$nloc + 1)), na.rm = TRUE)
-
       ## Fit model
       if (flags) {
 
-       if (opts$piecewise) {
+        if (opts$piecewise) {
           
-          aic = rep(NA, opts$nloc)
-          for (m in 1:opts$nloc) {
-            
-            t0 = locs[m]
-            t1 = temp1 - t0
-            mask2 = temp1 > t0
-            t2 = t1*mask2
-            rqm = try(rq(log(precip1) ~ mask1 + t1  + t2 + mask1:t1 + mask1:t2, 
-                         tau = opts$quantile, iid = opts$iid), TRUE)
-            if (class(rqm) == "try-error")
-              next
-            aic[m] = AIC(rqm)
-            
-          } ## l
+          ## Find break point
+          t0 = try(optimize(f, c(min(temp1),max(temp1) - 1e-16),
+                            precip = precip1, temp = temp1, mask = mask1,
+                            opts = opts, tol = opts$tolerance),
+                   TRUE)
           
-          if (any(!is.na(aic))) {
+          if (class(t0) == "try-error") {
             
-            m = which.min(aic)
-            t0 = locs[m]
+            rqm = 0
+            class(rqm) = "try-error"
+            countskl = cbind(as.numeric(table(mask1)),NA)
+            
+          } else {
+            
+            t0 = t0$minimum
             t1 = temp1 - t0
             mask2 = temp1 > t0
             t2 = t1*mask2
@@ -595,42 +611,34 @@ for (i in 1:n.chunks) {
             rqm = try(rq(log(precip1) ~ mask1 + t1  + t2 + mask1:t1 + mask1:t2, 
                          tau = opts$quantile, iid = opts$iid), TRUE)
             
-          } else {
-            
-            countskl = cbind(as.numeric(table(mask1)),NA)
-            
-          } ## aic
-
+          } ## try-error
+          
         } else {
           
           countskl = as.numeric(table(mask1))
           rqm = try(rq(log(precip1) ~ mask1 + temp1 + mask1:temp1, 
                        tau = opts$quantile, iid = opts$iid), TRUE)
         } ## piecewise
-
+        
       } else {
         
         if (opts$piecewise) {
           
-          aic = rep(NA, opts$nloc)
-          for (m in 1:opts$nloc) {
-            
-            t0 = locs[m]
-            t1 = temp1 - t0
-            mask2 = temp1 > t0
-            t2 = t1*mask2
-            rqm = try(rq(log(precip1) ~ t1  + t2, 
-                         tau = opts$quantile, iid = opts$iid), TRUE)
-            if (class(rqm) == "try-error")
-              next
-            aic[m] = AIC(rqm)
-            
-          } ## l
+          ## Find break point
+          t0 = try(optimize(f, c(min(temp1),max(temp1) - 1e-16),
+                            precip = precip1, temp = temp1, mask = NULL,
+                            opts = opts, tol = opts$tolerance),
+                   TRUE)
           
-          if (any(!is.na(aic))) {
+          if (class(t0) == "try-error") {
             
-            m = which.min(aic)
-            t0 = locs[m]
+            rqm = 0
+            class(rqm) = "try-error"
+            countskl = c(length(temp1),NA)
+            
+          } else {
+            
+            t0 = t0$minimum
             t1 = temp1 - t0
             mask2 = temp1 > t0
             t2 = t1*mask2
@@ -638,12 +646,8 @@ for (i in 1:n.chunks) {
             rqm = try(rq(log(precip1) ~ t1  + t2, 
                          tau = opts$quantile, iid = opts$iid), TRUE)
             
-          } else {
-            
-            countskl = c(length(temp1),NA)
-            
-          } ## aic
-          
+          } ## try-error
+
         } else {
           
           countskl = length(temp1)
