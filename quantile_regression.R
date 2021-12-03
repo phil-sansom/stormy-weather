@@ -343,6 +343,16 @@ coef.var = ncvar_def("coefficients", "", list(lon.dim,lat.dim,par.dim),
                      compression = opts$compression)
 vars = c(vars,list(count.var,pval.var,coef.var))
 
+## Break point for piecewise regression
+if (opts$piecewise) {
+  break.var = ncvar_def("break", "", list(lon.dim,lat.dim),
+                        missval = -9.9692099683868690e+36,
+                        longname = "Break point", 
+                        prec = "double",
+                        compression = opts$compression)
+  vars = c(vars,list(break.var))
+}
+
 if (opts$method == "Wald") {
 
   ## Define variables
@@ -467,7 +477,8 @@ for (i in 1:n.chunks) {
   if (exists("mask", opts))
     mask0 = array(NA, c(nx,count,nt))
   if (opts$piecewise) {
-    counts  = array(NA, c(nx,count,nlevels,2))
+    counts = array(NA, c(nx,count,nlevels,2))
+    breaks = array(NA, c(nx,count))
   } else {
     counts  = array(NA, c(nx,count,nlevels))
   }
@@ -758,6 +769,10 @@ for (i in 1:n.chunks) {
       if (class(aod) == "try-error")
         next
       
+      ## Store break point
+      if (opts$piecewise)
+        breaks[k,l] = t0
+      
       ## Store p-values
       pvalues[k,l,] = rev(aod$table[,4])
       
@@ -836,6 +851,8 @@ for (i in 1:n.chunks) {
     counts  = lonflip(counts , lon0)$x
     pvalues = lonflip(pvalues, lon0)$x
     coef    = lonflip(coef   , lon0)$x
+    if (opts$piecewise)
+      breaks = lonflip(breaks, lon0)$x
     if (opts$method == "Wald") {
       cov   = lonflip(cov  , lon0)$x
       df    = lonflip(df   , lon0)$x
@@ -848,6 +865,8 @@ for (i in 1:n.chunks) {
     counts  = invertlat(counts)
     pvalues = invertlat(pvalues)
     coef    = invertlat(coef )
+    if (opts$piecewise)
+      breaks = invertlat(breaks)
     if (opts$method == "Wald") {
       cov   = invertlat(cov)
       df    = invertlat(df )
@@ -862,8 +881,11 @@ for (i in 1:n.chunks) {
   if (fliplat) {
     if (opts$piecewise) {
       ncvar_put(nco, "counts", counts, 
-                start = c(1,ny - start - count + 2,1), 
+                start = c(1,ny - start - count + 2,1,1), 
                 count = c(nx,count,nlevels,2))
+      ncvar_put(nco, "break", breaks, 
+                start = c(1,ny - start - count + 2), 
+                count = c(nx,count))
     } else {
       ncvar_put(nco, "counts", counts, 
                 start = c(1,ny - start - count + 2,1), 
@@ -894,6 +916,8 @@ for (i in 1:n.chunks) {
     if (opts$piecewise) {
       ncvar_put(nco, "counts", counts, 
                 start = c(1,start,1,1), count = c(nx,count,nlevels,2))
+      ncvar_put(nco, "break", breaks, 
+                start = c(1,start), count = c(nx,count))
     } else {
       ncvar_put(nco, "counts", counts, 
                 start = c(1,start,1), count = c(nx,count,nlevels))
