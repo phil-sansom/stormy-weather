@@ -165,7 +165,7 @@ if (exists("mask", opts)) {
     levels = levels$value
     labels = strsplit(labels$value, " ")[[1]]
     if (opts$piecewise) {
-      tests = c(mask.name,paste0(temp.name,1),paste0(temp.name,1),
+      tests = c(mask.name,paste0(temp.name,1),paste0(temp.name,2),
                 paste0(mask.name,":",temp.name,1),
                 paste0(mask.name,":",temp.name,2))
     } else {
@@ -271,8 +271,9 @@ if (flags) {
   if (opts$piecewise) {
     npar = 3*nlevels
     par.names = c("Intercept",contrast.names,
-                  paste0(temp.name,1),paste0(contrast.names,":",temp.name,1),
-                  paste0(temp.name,2),paste0(contrast.names,":",temp.name,2))
+                  paste0(temp.name,1),paste0(temp.name,2),
+                  paste0(contrast.names,":",temp.name,1),
+                  paste0(contrast.names,":",temp.name,2))
   } else {
     npar = 2*nlevels
     par.names = c("Intercept",contrast.names,
@@ -397,9 +398,8 @@ ncatt_put(nco, 0, "iid"      , opts$iid      , prec = "integer")
 if (opts$method == "rank")
   ncatt_put(nco, 0, "level", opts$level, prec = "double")
 ncatt_put(nco, 0, "piecewise", opts$piecewise, prec = "integer")
-if (opts$piecewise) {
+if (opts$piecewise)
   ncatt_put(nco, 0, "nloc", opts$nloc, prec = "integer")
-}
 
 ## Write auxiliary coordinate variable
 ncvar_put(nco, "parameter", par.names)
@@ -412,7 +412,11 @@ if (opts$method == "Wald") {
 } ## method
 ncvar_put(nco, "level", labels)
 ncvar_put(nco, "ftest", tests )
-ncatt_put(nco, "counts", "coordinates", "level")
+if (opts$piecewise) {
+  ncatt_put(nco, "counts", "coordinates", "level piece")
+} else {
+  ncatt_put(nco, "counts", "coordinates", "level")
+}
 ncatt_put(nco, "pvalue", "coordinates", "ftest")
 if (flags) {
   ncvar_put(nco, "contrast" , contrast.names)
@@ -566,9 +570,9 @@ for (i in 1:n.chunks) {
        if (opts$piecewise) {
           
           aic = rep(NA, opts$nloc)
-          for (l in 1:opts$nloc) {
+          for (m in 1:opts$nloc) {
             
-            t0 = locs[l]
+            t0 = locs[m]
             t1 = temp1 - t0
             mask2 = temp1 > t0
             t2 = t1*mask2
@@ -576,14 +580,14 @@ for (i in 1:n.chunks) {
                          tau = opts$quantile, iid = opts$iid), TRUE)
             if (class(rqm) == "try-error")
               next
-            aic[l] = AIC(rqm)
+            aic[m] = AIC(rqm)
             
           } ## l
           
           if (any(!is.na(aic))) {
             
-            l = which.min(aic)
-            t0 = locs[l]
+            m = which.min(aic)
+            t0 = locs[m]
             t1 = temp1 - t0
             mask2 = temp1 > t0
             t2 = t1*mask2
@@ -609,9 +613,9 @@ for (i in 1:n.chunks) {
         if (opts$piecewise) {
           
           aic = rep(NA, opts$nloc)
-          for (l in 1:opts$nloc) {
+          for (m in 1:opts$nloc) {
             
-            t0 = locs[l]
+            t0 = locs[m]
             t1 = temp1 - t0
             mask2 = temp1 > t0
             t2 = t1*mask2
@@ -619,14 +623,14 @@ for (i in 1:n.chunks) {
                          tau = opts$quantile, iid = opts$iid), TRUE)
             if (class(rqm) == "try-error")
               next
-            aic[l] = AIC(rqm)
+            aic[m] = AIC(rqm)
             
           } ## l
           
           if (any(!is.na(aic))) {
             
-            l = which.min(aic)
-            t0 = locs[l]
+            m = which.min(aic)
+            t0 = locs[m]
             t1 = temp1 - t0
             mask2 = temp1 > t0
             t2 = t1*mask2
@@ -649,7 +653,11 @@ for (i in 1:n.chunks) {
         } ## piecewise
         
       } ## flags
-      counts[k,l,] = countskl
+      if (opts$piecewise) {
+        counts[k,l,,] = countskl
+      } else {
+        counts[k,l,] = countskl
+      }
       if (class(rqm) == "try-error")
         next
       
@@ -848,9 +856,15 @@ for (i in 1:n.chunks) {
   ## Write data
   print(paste("Writing chunk",i,"of",n.chunks))
   if (fliplat) {
-    ncvar_put(nco, "counts", counts, 
-              start = c(1,ny - start - count + 2,1), 
-              count = c(nx,count,nlevels))
+    if (opts$piecewise) {
+      ncvar_put(nco, "counts", counts, 
+                start = c(1,ny - start - count + 2,1), 
+                count = c(nx,count,nlevels,2))
+    } else {
+      ncvar_put(nco, "counts", counts, 
+                start = c(1,ny - start - count + 2,1), 
+                count = c(nx,count,nlevels))
+    }
     ncvar_put(nco, "pvalue", pvalues, 
               start = c(1,ny - start - count + 2,1), 
               count = c(nx,count,ntests))
@@ -873,8 +887,13 @@ for (i in 1:n.chunks) {
                 count = c(nx,count,npar))
     }
   } else {
-    ncvar_put(nco, "counts", counts, 
-              start = c(1,start,1), count = c(nx,count,nlevels))
+    if (opts$piecewise) {
+      ncvar_put(nco, "counts", counts, 
+                start = c(1,start,1,1), count = c(nx,count,nlevels,2))
+    } else {
+      ncvar_put(nco, "counts", counts, 
+                start = c(1,start,1), count = c(nx,count,nlevels))
+    }
     ncvar_put(nco, "pvalue", pvalues, 
               start = c(1,start,1), count = c(nx,count,ntests))
     ncvar_put(nco, "coefficients", coef, 
