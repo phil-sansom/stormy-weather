@@ -844,31 +844,57 @@ for (i in 1:n.chunks) {
   
   ## Transform data
   if (fliplon) {
-    counts  = lonflip(counts , lon0)$x
-    pvalues = lonflip(pvalues, lon0)$x
-    coef    = lonflip(coef   , lon0)$x
+    if (opt$piecewise) {
+      for (j in 1:nlevels)
+        for (k in 1:2)
+          counts[,,j,k] = lonflip(counts[,,j,k], lon0)$x
+    } else {
+      for (j in 1:nlevels)
+        counts[,,j] = lonflip(counts[,,j], lon0)$x
+    } ## piecewise
+    for (j in 1:ntests)
+      pvalues[,,j] = lonflip(pvalues[,,j], lon0)$x
+    for (j in 1:npar)
+      coef[,,j] = lonflip(coef[,,j], lon0)$x
     if (opts$piecewise)
       breaks = lonflip(breaks, lon0)$x
     if (opts$method == "Wald") {
-      cov   = lonflip(cov  , lon0)$x
-      df    = lonflip(df   , lon0)$x
+      for (j in 1:npar)
+        for (k in 1:npar)
+          cov[,,j,k] = lonflip(cov[,,j,k], lon0)$x
+      df = lonflip(df, lon0)$x
     } else if (opts$method == "rank") {
-      lower = lonflip(lower, lon0)$x
-      upper = lonflip(upper, lon0)$x
+      for (j in 1:npar) {
+        lower[,,j] = lonflip(lower[,,j], lon0)$x
+        upper[,,j] = lonflip(upper[,,j], lon0)$x
+      } ## npar
     } ## method
   } ## fliplon
   if (fliplat & count > 1) {
-    counts  = invertlat(counts)
-    pvalues = invertlat(pvalues)
-    coef    = invertlat(coef )
+    if (opts$piecewise) {
+      for (j in 1:nlevels)
+        for (k in 1:2)
+          counts[,,j,k] = invertlat(counts[,,j,k])
+    } else {
+      for (j in 1:nlevels)
+        counts[,,j] = invertlat(counts[,,j])
+    } ## piecewise
+    for (j in 1:ntests)
+      pvalues[,,j] = invertlat(pvalues[,,j])
     if (opts$piecewise)
       breaks = invertlat(breaks)
+    for (j in 1:npar)
+      coef[,,j] = invertlat(coef[,,j])
     if (opts$method == "Wald") {
-      cov   = invertlat(cov)
-      df    = invertlat(df )
+      for (j in 1:npar)
+        for (k in 1:npar)
+          cov[,,j,k] = invertlat(cov[,,j,k])
+      df = invertlat(df )
     } else if (opts$method == "rank") {
-      lower = invertlat(lower)
-      upper = invertlat(upper)
+      for (j in 1:npar) {
+        lower[,,j] = invertlat(lower[,,j])
+        upper[,,j] = invertlat(upper[,,j])
+      } ## npar
     } ## method
   } ## fliplat
   
