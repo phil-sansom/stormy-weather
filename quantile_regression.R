@@ -446,9 +446,9 @@ if (precip.units == "m") {
 ## Function for piecewise optimization
 f = function(t0, precip, temp, mask, opts) {
   
-  t1 = temp - t0
-  mask2 = temp > t0
-  t2 = t1*mask2
+  t1 = temp
+  mask2 = t1 > t0
+  t2 = (t1 - t0)*mask2
   
   if (is.null(mask)) {
     rqm = try(rq(log(precip) ~ t1  + t2, 
@@ -615,9 +615,9 @@ for (i in 1:n.chunks) {
           } else {
             
             t0 = t0$minimum
-            t1 = temp1 - t0
-            mask2 = temp1 > t0
-            t2 = t1*mask2
+            t1 = temp1
+            mask2 = t1 > t0
+            t2 = (t1 - t0)*mask2
             countskl = table(mask1,mask2)
             rqm = try(rq(log(precip1) ~ mask1 + t1  + t2 + mask1:t1 + mask1:t2, 
                          tau = opts$quantile, iid = opts$iid), TRUE)
@@ -650,9 +650,9 @@ for (i in 1:n.chunks) {
           } else {
             
             t0 = t0$minimum
-            t1 = temp1 - t0
-            mask2 = temp1 > t0
-            t2 = t1*mask2
+            t1 = temp1
+            mask2 = t1 > t0
+            t2 = (t1 - t0)*mask2
             countskl = c(length(temp1) - sum(mask2),sum(mask2))
             rqm = try(rq(log(precip1) ~ t1  + t2, 
                          tau = opts$quantile, iid = opts$iid), TRUE)
