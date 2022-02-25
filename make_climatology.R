@@ -178,27 +178,27 @@ clim.var  = ncvar_def("climatology_bounds", "", list(nv.dim,time.dim),
                      prec = "double", compression = 5)
 
 ## Create netCDF file
-nc = nc_create(outfile, list(clim.var,means.var,sds.var,quant.var))
+nco = nc_create(outfile, list(clim.var,means.var,sds.var,quant.var))
 
 ## Write data
-ncvar_put(nc, "mean"     , means    )
-ncvar_put(nc, "sd"       , sds      )
-ncvar_put(nc, "quantiles", quantiles)
-ncvar_put(nc, "climatology_bounds", climatology.bounds)
+ncvar_put(nco, "mean"     , means    )
+ncvar_put(nco, "sd"       , sds      )
+ncvar_put(nco, "quantiles", quantiles)
+ncvar_put(nco, "climatology_bounds", climatology.bounds)
 
 ## Write description
-ncatt_put(nc, 0, "Conventions", "CF-1.8", prec = "text")
-ncatt_put(nc, 0, "title", paste("Climatology:", varname), prec = "text")
+ncatt_put(nco, 0, "Conventions", "CF-1.8", prec = "text")
+ncatt_put(nco, 0, "title", paste("Climatology:", varname), prec = "text")
 
 ## Write standard names
-ncatt_put(nc, "longitude", "standard_name", "longitude", prec = "text")
-ncatt_put(nc, "latitude" , "standard_name", "latitude" , prec = "text")
-ncatt_put(nc, "time"     , "standard_name", "time"     , prec = "text")
+ncatt_put(nco, "longitude", "standard_name", "longitude", prec = "text")
+ncatt_put(nco, "latitude" , "standard_name", "latitude" , prec = "text")
+ncatt_put(nco, "time"     , "standard_name", "time"     , prec = "text")
 
 ## Write climatological time axis
-ncatt_put(nc, "time", "climatology", "climatology_bounds", prec = "text")
-ncatt_put(nc, "mean", "cell_methods", "time: mean", prec = "text")
-ncatt_put(nc, "sd"  , "cell_methods", "time: standard_deviation", prec = "text")
-ncatt_put(nc, "quantiles", "cell_methods", "time: quantile", prec = "text")
+ncatt_put(nco, "time", "climatology", "climatology_bounds", prec = "text")
+ncatt_put(nco, "mean", "cell_methods", "time: mean", prec = "text")
+ncatt_put(nco, "sd"  , "cell_methods", "time: standard_deviation", prec = "text")
+ncatt_put(nco, "quantiles", "cell_methods", "time: quantile", prec = "text")
 
-nc_close(nc)
+nc_close(nco)
