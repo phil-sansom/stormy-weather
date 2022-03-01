@@ -157,7 +157,7 @@ for (i in 1L:n.files) {
   }
   lonc0 = lonc; latc0 = latc; timec0 = timec
   lonf0 = lonf; latf0 = latf; timef0 = timef
-  lond0 = lont; latt0 = latt; timet0 = timet
+  lont0 = lont; latt0 = latt; timet0 = timet
   lond0 = lond; latd0 = latd; timed0 = timed
   lonp0 = lonp; latp0 = latp; timep0 = timep
   
