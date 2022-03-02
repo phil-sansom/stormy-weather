@@ -186,6 +186,7 @@ precip.longname = nc$var[[1L]]$longname
 nc_close(nc)
 
 ## Labels
+if (opts$none) {
 levels = c("none","cyclone","front","thunder",
            "cyclone:front","cyclone:thunder","front:thunder",
            "cyclone:front:thunder")
@@ -195,6 +196,17 @@ labels = c("(Intercept)","cyclone","front","thunder","temperature",
            "cyclone:front:thunder","cyclone:front:temperature",
            "cyclone:thunder:temperature","front:thunder:temperature",
            "cyclone:front:thunder:temperature")
+} else {
+  levels = c("cyclone","front","thunder",
+             "cyclone:front","cyclone:thunder","front:thunder",
+             "cyclone:front:thunder")
+  labels = c("(Intercept)","front","thunder","temperature",
+             "cyclone:front","cyclone:thunder","front:thunder",
+             "front:temperature","thunder:temperature",
+             "cyclone:front:thunder","cyclone:front:temperature",
+             "cyclone:thunder:temperature","front:thunder:temperature",
+             "cyclone:front:thunder:temperature")
+}
 tests   = c("storm_type","temperature","storm_type:temperature")
 nlevels = length(levels)
 nlabels = length(labels)
@@ -458,13 +470,23 @@ for (i in 1L:n.chunks) {
     for (l in 1L:count) {
       
       ## Extract data
-      precipitation = precip0[k,l,]
-      mask = !is.na(precipitation)
+      precipitation = precip0 [k,l,]
+      cyclone       = cyclone0[k,l,]
+      front         = front0  [k,l,]
+      thunder       = thunder0[k,l,]
+      temperature   = temp0   [k,l,]
+      
+      if (opts$none) {
+        mask = !is.na(precipitation)
+      } else {
+        mask = !is.na(precipitation) & (cyclone | front | thunder)
+      }
+        
       precipitation = precipitation[mask]
-      cyclone       = cyclone0[k,l,mask]
-      front         = front0  [k,l,mask]
-      thunder       = thunder0[k,l,mask]
-      temperature   = temp0   [k,l,mask]
+      cyclone       = cyclone      [mask]
+      front         = front        [mask]
+      thunder       = thunder      [mask]
+      temperature   = temperature  [mask]
 
       ## Counts
       nC   = sum(cyclone)
@@ -472,14 +494,29 @@ for (i in 1L:n.chunks) {
       nT   = sum(thunder)
       nCF  = sum(cyclone & front)
       nCT  = sum(cyclone & thunder)
-      nFT  = sum(front & thunder)
+      nFT  = sum(front   & thunder)
       nCFT = sum(cyclone & front & thunder)
-      nN   = sum(!(cyclone | front | thunder))
-      counts[k,l,] = c(nN,nC,nF,nT,nCF,nCT,nFT,nCFT)
+      if (opts$none) {
+        nN = sum(!(cyclone | front | thunder))
+        counts[k,l,] = c(nN,nC,nF,nT,nCF,nCT,nFT,nCFT)
+      } else {
+        counts[k,l,] = c(nC,nF,nT,nCF,nCT,nFT,nCFT)
+      }
       
       ## Fit model
-      rqm = try(rq(log(precipitation) ~ cyclone*front*thunder*temperature, 
-                   tau = opts$quantile, iid = opts$iid), TRUE)
+      if (opts$none) {
+        rqm = try(rq(log(precipitation) ~ cyclone*front*thunder*temperature, 
+                     tau = opts$quantile, iid = opts$iid), TRUE)
+      } else {
+        rqm = try(rq(log(precipitation) ~ front + thunder + 
+                       cyclone:front + cyclone:thunder + front:thunder + 
+                       cyclone:front:thunder + temperature + 
+                       front:temperature + thunder:temperature + 
+                       cyclone:front:temperature + cyclone:thunder:temperature +
+                       front:thunder:temperature + 
+                       cyclone:front:thunder:temperature, 
+                     tau = opts$quantile, iid = opts$iid), TRUE)
+      }
       if (class(rqm) == "try-error")
         next
       
@@ -505,14 +542,28 @@ for (i in 1L:n.chunks) {
         next
       
       ## Fit intercepts
-      rq1 = try(rq(log(precipitation) ~ cyclone*front*thunder, 
-                   tau = opts$quantile, iid = opts$iid), TRUE)
+      if (opts$none) {
+        rq1 = try(rq(log(precipitation) ~ cyclone*front*thunder, 
+                     tau = opts$quantile, iid = opts$iid), TRUE)
+      } else {
+        rq1 = try(rq(log(precipitation) ~ front + thunder + 
+                       cyclone:front + cyclone:thunder + front:thunder + 
+                       cyclone:front:thunder,
+                     tau = opts$quantile, iid = opts$iid), TRUE)
+      }
       if (class(rq0) == "try-error")
         next
 
       ## Fit slope
-      rq2 = try(rq(log(precipitation) ~ cyclone*front*thunder + temperature, 
-                   tau = opts$quantile, iid = opts$iid), TRUE)
+      if (opts$none) {
+        rq2 = try(rq(log(precipitation) ~ cyclone*front*thunder + temperature, 
+                     tau = opts$quantile, iid = opts$iid), TRUE)
+      } else {
+        rq2 = try(rq(log(precipitation) ~ front + thunder + 
+                       cyclone:front + cyclone:thunder + front:thunder + 
+                       cyclone:front:thunder + temperature,
+                     tau = opts$quantile, iid = opts$iid), TRUE)
+      }
       if (class(rq0) == "try-error")
         next
       
@@ -584,7 +635,7 @@ for (i in 1L:n.chunks) {
       
     } ## l
   } ## k
-  rm(precip0,temp0,cyclone0,front0,temp0,
+  rm(precip0,temp0,cyclone0,front0,thunder0,
      temperature,precipitation,cyclone,front,thunder,mask)
   gc()
   
