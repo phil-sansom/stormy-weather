@@ -81,7 +81,9 @@ for (i in 1L:ny) {
   dists = distVincentySphere(c(0,lat[i]), 
                              cbind(lon1[grid[,1L]+dnx+1L],lat[grid[,2L]]))/1000
   
-  stencils[[i]] = grid[dists <= threshold,]
+  stencil = grid[dists <= threshold,]
+  stencil = cbind(stencil, cos(lat[stencil[,2L]]*pi/180))
+  stencils[[i]] = stencil
   
 } ## i
 
@@ -212,8 +214,9 @@ for (t in 1L:nt) {
       } else {
         stencil[,1L] = (stencil[,1L] - 1L) %% nx + 1L
       }
-      doutput[x,y] = mean(dinput[stencil])
-      poutput[x,y] = max (pinput[stencil])
+      doutput[x,y] = weighted.mean(dinput[stencil[,1L:2L]], 
+                                   stencil[,3L], na.rm = TRUE)
+      poutput[x,y] = max(pinput[stencil[,1L:2L]], na.rm = TRUE)
       
       
     } ## y
