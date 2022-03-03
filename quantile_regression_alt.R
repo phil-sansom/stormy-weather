@@ -26,6 +26,9 @@ option_list = list(
   make_option(c("--level","-l"), action = "store", type = "double",
               help = "Nominal confidence level required [default: 0.95]",
               default = 0.95),
+  make_option("--min", action = "store", type = "integer",
+              help = "Minimum number of observations for each storm type",
+              default = 100),
   make_option(c("--none"), action = "store_true", type = "logical",
               help = "Include the no storm type",
               default = "FALSE"),
@@ -502,6 +505,22 @@ for (i in 1L:n.chunks) {
       } else {
         counts[k,l,] = c(nC,nF,nT,nCF,nCT,nFT,nCFT)
       }
+      
+      ## Check for very low counts
+      if (any(counts[k,l,] < opts$min))
+        next
+      if (nC - nCF - nCT - nCFT < opts$min)
+        next
+      if (nF - nCF - nFT - nCFT < opts$min)
+        next
+      if (nT - nCT - nFT - nCFT < opts$min)
+        next
+      if (nCF - nCFT < opts$min)
+        next
+      if (nCT - nCFT < opts$min)
+        next
+      if (nFT - nCFT < opts$min)
+        next
       
       ## Fit model
       if (opts$none) {
