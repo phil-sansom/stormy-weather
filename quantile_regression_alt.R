@@ -509,11 +509,11 @@ for (i in 1L:n.chunks) {
       ## Check for very low counts
       if (any(counts[k,l,] < opts$min))
         next
-      if (nC - nCF - nCT - nCFT < opts$min)
+      if (nC - nCF - nCT + nCFT < opts$min)
         next
-      if (nF - nCF - nFT - nCFT < opts$min)
+      if (nF - nCF - nFT + nCFT < opts$min)
         next
-      if (nT - nCT - nFT - nCFT < opts$min)
+      if (nT - nCT - nFT + nCFT < opts$min)
         next
       if (nCF - nCFT < opts$min)
         next
